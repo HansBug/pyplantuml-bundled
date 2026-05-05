@@ -217,18 +217,27 @@ jobs:
           - label: linux-aarch64-manylinux
             os: ubuntu-22.04-arm
             image: 'ubuntu:22.04'
+          - label: linux-aarch64-manylinux
+            os: ubuntu-22.04-arm
+            image: 'ubuntu:24.04'
           # 2019-2020-era + older-Python coverage. The wheel ABI is
-          # manylinux_2_28 (glibc 2.28+, Debian 10+/Ubuntu 18.10+) and
-          # musllinux_1_2 (musl 1.2+, Alpine 3.13+), so anything below
-          # those baselines is intentionally out of scope.  The Python
-          # 3.6 buster image validates the 3.6 install path on a
-          # non-bare image (still glibc 2.28+).
+          # manylinux_2_17 (glibc 2.17+, CentOS 7 / Debian 8 era) and
+          # musllinux_1_1 (musl 1.1+, Alpine 3.12 era), so even
+          # Alpine 3.10 (musl 1.1.22) and Debian 10 (glibc 2.28) are
+          # in scope.  The python:3.6-slim-buster image additionally
+          # validates the 3.6 install path on a non-bare image.
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
             image: 'python:3.6-slim-buster'      # Debian 10, glibc 2.28, py 3.6
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
             image: 'debian:10-slim'              # Debian 10 buster, 2019
+          - label: linux-aarch64-manylinux
+            os: ubuntu-22.04-arm
+            image: 'debian:10-slim'              # Debian 10 buster aarch64, 2019
+          - label: linux-aarch64-manylinux
+            os: ubuntu-22.04-arm
+            image: 'python:3.6-slim-buster'      # py 3.6 on aarch64 buster
           # musl coverage
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
@@ -236,9 +245,15 @@ jobs:
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
             image: 'alpine:3.21'
+          - label: linux-x86_64-musllinux
+            os: ubuntu-22.04
+            image: 'alpine:3.10'                 # Alpine 3.10 (2019, musl 1.1.22)
           - label: linux-aarch64-musllinux
             os: ubuntu-22.04-arm
             image: 'alpine:3.20'
+          - label: linux-aarch64-musllinux
+            os: ubuntu-22.04-arm
+            image: 'alpine:3.21'
     env:
       DOCKER_IMAGE: ${{ matrix.image }}
     steps:
