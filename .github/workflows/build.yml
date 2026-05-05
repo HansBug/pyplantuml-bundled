@@ -78,12 +78,28 @@ jobs:
       # macOS / Windows: cibuildwheel runs natively, so install JDK on the
       # runner host BEFORE cibuildwheel and run the asset scripts once.
       # Linux containers install the JDK inside CIBW_BEFORE_ALL.
-      - name: Set up Temurin 17 (macOS / Windows)
-        if: runner.os != 'Linux'
+      - name: Set up Temurin 17 (macOS / Windows x64)
+        if: runner.os != 'Linux' && matrix.os != 'windows-11-arm'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      # setup-java's hosted tool cache does not yet have Temurin for
+      # windows-11-arm, so install it manually via Adoptium's API.
+      - name: Set up Temurin 17 (Windows ARM64, manual)
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          $url = 'https://api.adoptium.net/v3/binary/latest/17/ga/windows/aarch64/jdk/hotspot/normal/eclipse'
+          $zip = "$env:RUNNER_TEMP\temurin17.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $dest = "$env:RUNNER_TEMP\jdk17"
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          $jdk = (Get-ChildItem $dest -Directory)[0].FullName
+          "JAVA_HOME=$jdk"  | Out-File -FilePath $env:GITHUB_ENV  -Append -Encoding utf8
+          "$jdk\bin"        | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & "$jdk\bin\java.exe" -version
 
       - name: Fetch jar + build JRE (macOS / Windows)
         if: runner.os != 'Linux'
