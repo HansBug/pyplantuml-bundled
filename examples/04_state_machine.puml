@@ -1,0 +1,42 @@
+@startuml state_machine
+skinparam dpi 144
+skinparam defaultFontSize 14
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+title pyplantuml.run() 状态机
+
+[*] --> Idle
+
+state Idle {
+    Idle : 调用 pyplantuml.run(args)
+}
+
+state ResolvingJava {
+    ResolvingJava : 检查 PYPLANTUML_JAVA env
+    ResolvingJava : fallback 到 jre/bin/java
+}
+
+state PreparingFonts <<fork>> {
+    PreparingFonts : 仅 Linux 走这个分支
+}
+
+state Spawning {
+    Spawning : subprocess.run([java, -jar, ...])
+    Spawning : -Djava.awt.headless=true
+    Spawning : -Dfile.encoding=UTF-8
+}
+
+state Failed #FFCDD2
+state Succeeded #C8E6C9
+
+Idle --> ResolvingJava
+ResolvingJava --> Spawning : non-Linux
+ResolvingJava --> PreparingFonts : Linux
+PreparingFonts --> Spawning : LD_LIBRARY_PATH +\nFONTCONFIG_FILE 设好
+Spawning --> Succeeded : exit 0
+Spawning --> Failed : exit ≠ 0\n→ raise PlantUmlError\n(if check=True)
+Succeeded --> [*]
+Failed --> [*]
+
+@enduml

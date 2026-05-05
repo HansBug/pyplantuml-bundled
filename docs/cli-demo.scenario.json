@@ -1,0 +1,69 @@
+{
+  "name": "pyplantuml-cli-demo",
+  "cwd": "/tmp/cli-demo",
+  "shell": ["bash", "--noprofile", "--norc", "-i"],
+  "vhs": {
+    "fontSize": 16,
+    "width": 1080,
+    "height": 620,
+    "padding": 20,
+    "windowBar": "Colorful",
+    "borderRadius": 10,
+    "theme": "Catppuccin Mocha",
+    "typingSpeed": "35ms",
+    "framerate": 24,
+    "outputs": ["gif"],
+    "endHoldSeconds": 3
+  },
+  "steps": [
+    { "action": "hide" },
+    {
+      "action": "command",
+      "text": ". /tmp/cli-demo/setup.sh && clear",
+      "wait_for_text": "demo\\$",
+      "timeout_ms": 8000
+    },
+    { "action": "show" },
+    { "action": "sleep", "ms": 600 },
+
+    {
+      "action": "command",
+      "text": "pip install pyplantuml-bundled",
+      "wait_for_text": "Successfully installed",
+      "timeout_ms": 12000
+    },
+    { "action": "sleep", "ms": 1200 },
+
+    {
+      "action": "command",
+      "text": "cat hello.puml",
+      "wait_for_text": "登录成功",
+      "timeout_ms": 5000
+    },
+    { "action": "sleep", "ms": 1500 },
+
+    {
+      "action": "command",
+      "text": "plantuml -tpng hello.puml && ls -lh hello.png",
+      "wait_for_text": "hello.png",
+      "timeout_ms": 15000
+    },
+    { "action": "sleep", "ms": 1800 },
+
+    {
+      "action": "command",
+      "text": "plantuml -checkonly hello.puml; echo exit=$?",
+      "wait_for_text": "exit=0",
+      "timeout_ms": 10000
+    },
+    { "action": "sleep", "ms": 1000 },
+
+    {
+      "action": "command",
+      "text": "plantuml -version | head -3",
+      "wait_for_text": "PlantUML version",
+      "timeout_ms": 10000
+    },
+    { "action": "sleep", "ms": 2500 }
+  ]
+}

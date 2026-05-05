@@ -1,0 +1,42 @@
+@startuml class_diagram
+skinparam dpi 144
+skinparam defaultFontSize 14
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+title pyplantuml-bundled — Public API surface
+
+class "pyplantuml" as M <<module>> {
+    + JAR_PATH : Path
+    + JAVA_BIN : Path
+    + __version__ : str
+    --
+    + version() : str
+    + check(source: PathLike) : bool
+    + render(source, *, output_dir, fmt, extra_args) : CompletedProcess
+    + run(args, *, cwd, env, capture_output, check, timeout) : CompletedProcess
+    + _cli() : int
+}
+
+class "PlantUmlError" as E <<RuntimeError>> {
+}
+
+note top of M
+  Pure-Python launcher.
+  No C extensions, no
+  per-Python-version build.
+  Wheel tag is **py3-none-{plat}**.
+end note
+
+note right of E
+  Raised when:
+  • bundled JRE is missing
+  • PYPLANTUML_JAVA env var
+    points to a missing path
+  • plantuml.jar exits non-zero
+    in strict mode
+end note
+
+M ..> E : raises
+
+@enduml

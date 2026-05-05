@@ -1,0 +1,41 @@
+@startuml architecture
+skinparam dpi 144
+skinparam defaultFontSize 14
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+title pyplantuml-bundled — what's inside the wheel
+
+package "your Python project" #FAFAFA {
+    rectangle "import pyplantuml" as user
+}
+
+package "pyplantuml package (one wheel per platform)" #EAF6FF {
+    rectangle "__init__.py\n• render() / check() / version()\n• subprocess wrapper\n• env + JVM flag setup" as launcher
+    rectangle "plantuml.jar\n22 MB (PlantUML 1.2024.7, GPLv3)" as jar
+    rectangle "jre/\njlink-stripped Temurin 17\n~50 MB native binaries" as jre
+    rectangle "runtime/linux-<arch>/lib\n.so chain (Linux only)\nfontconfig + freetype + …" as nativelibs
+    rectangle "runtime/linux-<arch>/fonts\nDejaVu + WenQuanYi MicroHei\n(Linux only, ~6 MB)" as fonts
+    rectangle "runtime/fonts.conf.template\nrendered at first run" as fontsconf
+}
+
+cloud "operating system" as os #F5F5F5
+note right of os
+  Linux slim / scratch:
+    no Java, no fontconfig
+  macOS:
+    CoreText + system CJK
+  Windows:
+    GDI + system CJK
+end note
+
+user --> launcher : Python API / CLI
+launcher --> jre : "spawn java\n-Djava.awt.headless=true"
+jre ..> jar : -jar plantuml.jar
+launcher ..> nativelibs : LD_LIBRARY_PATH (Linux)
+launcher ..> fontsconf : FONTCONFIG_FILE
+fontsconf ..> fonts : <dir>…fonts</dir>
+nativelibs <.. fonts : freetype reads
+jre --> os : minimal native API surface
+
+@enduml

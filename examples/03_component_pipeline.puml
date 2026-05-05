@@ -1,0 +1,47 @@
+@startuml component_pipeline
+skinparam dpi 144
+skinparam defaultFontSize 14
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+title CI 多平台 Wheel 构建流水线
+
+cloud "GitHub Actions" {
+    rectangle "ubuntu-22.04\n(host)" as H1 #FFF8E1
+    rectangle "ubuntu-22.04-arm\n(host)" as H2 #FFF8E1
+    rectangle "macos-15-intel\n(native build)" as M1 #FFF8E1
+    rectangle "macos-14\n(native build)" as M2 #FFF8E1
+    rectangle "windows-2022\n(native build)" as W1 #FFF8E1
+    rectangle "windows-11-arm\n(native build)" as W2 #FFF8E1
+}
+
+package "manylinux_2_28 / musllinux_1_2 containers" #E3F2FD {
+    rectangle "AlmaLinux 9\nglibc 2.28+" as Cmany
+    rectangle "Alpine 3\nmusl 1.2+" as Cmusl
+}
+
+H1 --> Cmany : cibuildwheel
+H1 --> Cmusl : cibuildwheel
+H2 --> Cmany : cibuildwheel
+H2 --> Cmusl : cibuildwheel
+
+artifact "8 wheels (~58 MB ea)" as A #C8E6C9
+Cmany --> A
+Cmusl --> A
+M1 --> A
+M2 --> A
+W1 --> A
+W2 --> A
+
+note right of A
+  py3-none-manylinux_2_28_x86_64
+  py3-none-manylinux_2_28_aarch64
+  py3-none-musllinux_1_2_x86_64
+  py3-none-musllinux_1_2_aarch64
+  py3-none-macosx_11_0_x86_64
+  py3-none-macosx_11_0_arm64
+  py3-none-win_amd64
+  py3-none-win_arm64
+end note
+
+@enduml

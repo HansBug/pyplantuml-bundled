@@ -1,0 +1,36 @@
+@startuml 时序图_中文
+skinparam dpi 144
+skinparam defaultFontSize 16
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundCorner 8
+title CJK Sequence Diagram — 用户登录流程
+
+actor 用户 as U
+participant "前端 Web" as W
+participant "API 网关" as G
+participant "认证服务" as A
+database "用户库 PostgreSQL" as D
+
+U -> W : 输入账号 / 密码
+W -> G : POST /login
+G -> A : VerifyCredentials(account, password)
+A -> D : SELECT * FROM users WHERE …
+D --> A : row { id, hashed_password, email }
+A -> A : bcrypt.verify(password, hashed)
+alt 认证成功
+    A --> G : { token, profile }
+    G --> W : 200 OK + token
+    W --> U : 登录成功 ✓
+else 认证失败
+    A --> G : 401 Unauthorized
+    G --> W : { error: "invalid credentials" }
+    W --> U : 提示用户重新输入
+end
+
+note right of A
+  日本語: パスワード検証
+  한국어: 비밀번호 확인
+  English: bcrypt + 12-round salt
+end note
+@enduml
