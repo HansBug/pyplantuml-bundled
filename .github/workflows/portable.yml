@@ -126,29 +126,31 @@ jobs:
             "$BUILD_CONTAINER" \
             sh -ec '
               if command -v apk >/dev/null 2>&1; then
-                # Alpine 3.10 reached EOL May 2021, repos archived to
-                # dl-cdn alpine archive. Switch sources to archive.
-                if [ -f /etc/alpine-release ] && grep -q '^3\.\(7\|8\|9\|10\|11\|12\|13\|14\|15\|16\)' /etc/alpine-release 2>/dev/null; then
-                  sed -i "s|http://dl-cdn.alpinelinux.org|http://dl-cdn.alpinelinux.org|g" /etc/apk/repositories
-                fi
                 apk add --no-cache bash zip curl openjdk17 fontconfig freetype \
-                  libpng expat libuuid zlib brotli-libs which findutils binutils \
-                  || (echo 'apk failed, trying without openjdk17 first'; \
-                      apk add --no-cache bash zip curl fontconfig freetype \
-                        libpng expat libuuid zlib brotli-libs which findutils binutils)
+                  libpng expat libuuid zlib brotli-libs which findutils binutils
               else
-                # Debian 9 stretch / 10 buster reached LTS EOL; repos
-                # moved to archive.debian.org. Patch sources before update.
-                if [ -f /etc/os-release ] && grep -qE '^VERSION_CODENAME=(stretch|buster)' /etc/os-release 2>/dev/null; then
-                  sed -i \
-                    -e 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' \
-                    -e 's|http://security.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
-                    -e '/buster-updates/d' \
-                    -e '/stretch-updates/d' \
-                    /etc/apt/sources.list
-                  echo 'Acquire::Check-Valid-Until "false";' \
-                    > /etc/apt/apt.conf.d/99no-check-valid-until
+                # Debian 9 stretch / 10 buster reached LTS EOL; default
+                # apt mirrors return 404. Source /etc/os-release without
+                # using grep+regex (which fights single-quote escaping
+                # under sh -ec) to detect codename and patch to
+                # archive.debian.org when needed.
+                CODENAME=
+                if [ -f /etc/os-release ]; then
+                  . /etc/os-release
+                  CODENAME=$VERSION_CODENAME
                 fi
+                case "$CODENAME" in
+                  stretch|buster|jessie)
+                    sed -i \
+                      -e "s|deb.debian.org|archive.debian.org|g" \
+                      -e "s|security.debian.org/debian-security|archive.debian.org/debian-security|g" \
+                      -e "s|security.debian.org|archive.debian.org/debian-security|g" \
+                      -e "/${CODENAME}-updates/d" \
+                      /etc/apt/sources.list
+                    printf "%s\n" "Acquire::Check-Valid-Until \"false\";" \
+                      > /etc/apt/apt.conf.d/99no-check-valid-until
+                    ;;
+                esac
                 apt-get update -qq
                 apt-get install -y --no-install-recommends \
                   zip binutils curl ca-certificates openjdk-17-jdk-headless \
