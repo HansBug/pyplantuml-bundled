@@ -380,6 +380,28 @@ jobs:
                 # to point at an ubuntu mirror produces 404s — only
                 # rewrite when the container is also ubuntu.
                 CONTAINER_ID=$(. /etc/os-release 2>/dev/null && echo "$ID")
+                # Debian 9 stretch / 10 buster reached LTS EOL; their
+                # default deb.debian.org mirror returns 404.  Patch the
+                # sources to archive.debian.org before any apt-get can
+                # run.  Same logic the portable.yml build container
+                # uses, hoisted here for stage-2 testing.
+                CODENAME=
+                if [ -f /etc/os-release ]; then
+                  . /etc/os-release
+                  CODENAME=$VERSION_CODENAME
+                fi
+                case "$CODENAME" in
+                  stretch|buster|jessie)
+                    sed -i \
+                      -e "s|deb.debian.org|archive.debian.org|g" \
+                      -e "s|security.debian.org/debian-security|archive.debian.org/debian-security|g" \
+                      -e "s|security.debian.org|archive.debian.org/debian-security|g" \
+                      -e "/${CODENAME}-updates/d" \
+                      /etc/apt/sources.list
+                    printf "%s\n" "Acquire::Check-Valid-Until \"false\";" \
+                      > /etc/apt/apt.conf.d/99no-check-valid-until
+                    ;;
+                esac
                 if [ -n "$HOST_MIRROR" ] && [ "$CONTAINER_ID" = "ubuntu" ]; then
                   echo "rewriting apt sources to: $HOST_MIRROR"
                   for f in /etc/apt/sources.list \
