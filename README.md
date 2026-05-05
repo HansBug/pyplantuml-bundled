@@ -34,16 +34,35 @@ The JRE module set is the empirically minimal set that still renders PNG, SVG, A
 pip install pyplantuml-bundled
 ```
 
-`pip` selects the right wheel for your OS, architecture, and libc automatically. **One single wheel covers Python 3.7 through 3.14** on the same platform — there are no per-Python-version wheels because the package has no C extensions and the launcher uses only pre-3.7 stdlib APIs. Wheel tag is `py3-none-{platform}`.
+`pip` selects the right wheel for your OS, architecture, and libc automatically. **One single wheel covers Python 3.6 through 3.14** on the same platform — there are no per-Python-version wheels because the package has no C extensions and the launcher only uses 3.6-compatible stdlib APIs. Wheel tag is `py3-none-{platform}`.
 
-Supported pre-built wheels:
+### Pre-built wheel matrix
 
-| OS / libc | x86_64 | aarch64 / arm64 | Approx. wheel size |
+| Platform | Wheel tag | libc / runtime baseline | Approx. size |
 |---|---|---|---|
-| Linux glibc (`manylinux_2_28`)   | ✅ | ✅ | ~58 MB |
-| Linux musl (`musllinux_1_2`)     | ✅ | ✅ | ~55 MB |
-| macOS                            | ✅ (Intel) | ✅ (Apple Silicon) | ~50 MB |
-| Windows                          | ✅ | ✅ | ~48 MB |
+| Linux x86_64  | `py3-none-manylinux_2_17_x86_64`   | glibc 2.17 (CentOS 7 / Debian 8 era, 2014+) | ~58 MB |
+| Linux aarch64 | `py3-none-manylinux_2_17_aarch64`  | glibc 2.17                                  | ~58 MB |
+| Linux x86_64  | `py3-none-musllinux_1_1_x86_64`    | musl 1.1 (Alpine 3.12+, 2020+)              | ~55 MB |
+| Linux aarch64 | `py3-none-musllinux_1_1_aarch64`   | musl 1.1                                    | ~55 MB |
+| macOS x86_64  | `py3-none-macosx_*_x86_64`         | macOS 10.13+ (Intel)                        | ~50 MB |
+| macOS arm64   | `py3-none-macosx_*_arm64`          | macOS 11.0+ (Apple Silicon)                 | ~50 MB |
+| Windows x86_64 | `py3-none-win_amd64`              | Windows 10+ (x64)                           | ~48 MB |
+| Windows arm64  | `py3-none-win_arm64`              | Windows 11 ARM                              | ~48 MB |
+
+### Wheel test matrix (clean-environment stage 2)
+
+Every release runs the wheel through 3 independent phases on a clean distro container — install + selfcheck → external smoketest (5-check black-box) → pytest unit tests — across this OS coverage:
+
+| Family | Distros tested |
+|---|---|
+| Debian      | `debian:10-slim` (buster, 2019, glibc 2.28) → `debian:12-slim` (bookworm, 2023, glibc 2.36) |
+| Ubuntu      | `18.04` (bionic, 2018) → `20.04` (focal, 2020) → `22.04` (jammy, 2022) → `24.04` (noble, 2024) |
+| Red Hat     | `rockylinux:8` (EL8, 2019) → `rockylinux:9` (EL9, 2022) → `fedora:40` (2024) |
+| Alpine      | `3.10` (2019, musl 1.1.22) → `3.12` (2020, musllinux_1_1 floor) → `3.20` → `3.21` (2024) |
+| macOS       | `macos-15-intel` (x86_64) and `macos-14` (arm64) |
+| Windows     | `windows-2022` (x86_64) and `windows-11-arm` (arm64) |
+
+20 Linux × 3 phases + 4 mac/win × 3 phases = **24 wheel stage-2 jobs every CI run**.
 
 ## Quick start
 
@@ -177,7 +196,7 @@ proc = subprocess.Popen(
 
 ## Portable executables (no Python required)
 
-Beyond the wheel, every release also ships a self-contained PyInstaller-built `plantuml` binary for every supported `(OS, arch, libc)` slot. These embed Python + PlantUML jar + JRE + (Linux only) the fontconfig stack, so you can drop them on a machine that has neither Python nor Java installed and they Just Work. Two flavours per platform — single self-extracting binary (`plantuml-onefile-<plat>`) and a directory archive (`plantuml-onedir-<plat>.zip`) — downloadable from the [GitHub release page](https://github.com/HansBug/pyplantuml-bundled/releases).
+Beyond the wheel, every release also ships a self-contained PyInstaller-built `plantuml` binary. These embed Python + PlantUML jar + JRE + (Linux only) the fontconfig stack, so you can drop them on a machine that has neither Python nor Java installed and they Just Work. Two flavours per platform — single self-extracting binary (`plantuml-onefile-<plat>`) and a directory archive (`plantuml-onedir-<plat>.zip`) — downloadable from the [GitHub release page](https://github.com/HansBug/pyplantuml-bundled/releases).
 
 > **macOS Apple Silicon caveat**: a portable executable for macos-arm64 is *not* shipped. Apple Silicon's hardened-runtime requires the bundled OpenJDK to hold the `com.apple.security.cs.allow-jit` entitlement, which is only honoured by binaries signed with a paid Developer-ID identity. Ad-hoc-signed binaries (the only option for an OSS project) crash with `SIGSEGV` at `pc=0x0` during JVM init regardless of every workaround we tried (`-Xint`, removing `--options runtime`, embedding the entitlement at build time, etc.). The wheel works fine on macos-arm64 — install with `pip install pyplantuml-bundled`.
 
@@ -188,7 +207,35 @@ chmod +x plantuml-onefile-linux-x86_64-glibc
 ./plantuml-onefile-linux-x86_64-glibc selfcheck   # 28-case diagnostic
 ```
 
-The portable CI matrix is two-staged: stage 1 builds inside a build container that has Python + JDK + apt (so JRE + fonts + native libs assemble correctly); stage 2 then mounts the resulting binary into a *fully bare* base image (`debian:12-slim`, `ubuntu:22.04`, `alpine:3.20`, `windows-2022`, `macos-14`, …) and runs `plantuml selfcheck` to prove that nothing relies on a tool the build host had but the target won't.
+### Pre-built portable executable matrix
+
+| Platform | Onefile binary | Onedir archive | Build container baseline |
+|---|---|---|---|
+| Linux x86_64 glibc  | `plantuml-onefile-linux-x86_64-glibc`  | `plantuml-onedir-linux-x86_64-glibc.zip`  | Debian 10 buster (glibc 2.28, 2019) |
+| Linux aarch64 glibc | `plantuml-onefile-linux-aarch64-glibc` | `plantuml-onedir-linux-aarch64-glibc.zip` | Debian 10 buster (glibc 2.28)       |
+| Linux x86_64 musl   | `plantuml-onefile-linux-x86_64-musl`   | `plantuml-onedir-linux-x86_64-musl.zip`   | Alpine 3.12 (musl 1.1.24, 2020)     |
+| Linux aarch64 musl  | `plantuml-onefile-linux-aarch64-musl`  | `plantuml-onedir-linux-aarch64-musl.zip`  | Alpine 3.12                          |
+| macOS x86_64        | `plantuml-onefile-macos-x86_64`        | `plantuml-onedir-macos-x86_64.zip`        | macos-15-intel runner (Python 3.10) |
+| macOS arm64         | _not shipped — see hardened-runtime caveat above_ | — | — |
+| Windows x86_64      | `plantuml-onefile-windows-x86_64.exe`  | `plantuml-onedir-windows-x86_64.zip`      | windows-2022 runner (Python 3.10)   |
+| Windows arm64       | `plantuml-onefile-windows-arm64.exe`   | `plantuml-onedir-windows-arm64.zip`       | windows-11-arm runner (Python 3.11) |
+
+### Portable test matrix (clean-environment stage 2)
+
+CI exercises every (onefile, onedir) artifact through the same 3 independent phases as the wheel matrix — fresh distro container selfcheck → external 5-check smoketest (no python, no java; only the binary runs) → pytest unit tests over the binary via subprocess — across this OS coverage:
+
+| Family | Distros tested |
+|---|---|
+| Debian      | `debian:10-slim` (buster, glibc 2.28 floor) → `debian:12-slim` (bookworm) |
+| Ubuntu      | `20.04` (focal) → `22.04` (jammy) → `24.04` (noble). _No 18.04: glibc 2.27 is below the portable build container's 2.28 floor; install via wheel on bionic._ |
+| Red Hat     | `rockylinux:8` (EL8) → `rockylinux:9` (EL9) → `fedora:40` (rolling) |
+| Alpine      | `3.10` (2019, musl 1.1.22) → `3.12` (2020, baseline) → `3.20` → `3.21` (2024) |
+| macOS       | `macos-15-intel` (x86_64) — _no arm64, see caveat_ |
+| Windows     | `windows-2022` (x86_64) and `windows-11-arm` (arm64) |
+
+22 Linux × 3 phases × 2 artifacts (onefile + onedir) + 3 mac/win × 3 phases × 2 artifacts = **25 portable stage-2 jobs every CI run**.
+
+The "clean container" guarantee is real: the selfcheck and smoketest phases install **nothing** inside the container — the binary is the only thing that runs. The pytest phase installs python3 + pytest only; java/jdk are never present (the binary's bundled JRE is what java calls land on).
 
 ## Self-check (`plantuml selfcheck`)
 
