@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+  # Release events trigger the `publish` job (PyPI + GitHub Release
+  # upload).  The job has its own `if:` guard on top, so the whole
+  # publish path is double-locked to release events only.
+  release:
+    types: [published]
 
 concurrency:
   group: build-${{ github.ref }}
@@ -645,3 +650,67 @@ jobs:
         with:
           name: all-wheels
           path: dist/*.whl
+
+  # ------------------------------------------------------------------
+  # FINAL STAGE — publish.  ONLY runs when the workflow was triggered
+  # by a published release.  The `if:` on the job is a belt-and-braces
+  # guard on top of the `on: release` filter so a manual
+  # `workflow_dispatch` (or any other event) can never accidentally
+  # publish.
+  #
+  # Two destinations:
+  #   1. PyPI — via the official pypa/gh-action-pypi-publish action,
+  #      authenticated via OIDC trusted publisher (NO API token in
+  #      secrets).  This requires a one-time setup on PyPI:
+  #        Project settings → Publishing → Add a new pending publisher
+  #          PyPI project name: pyplantuml-bundled
+  #          Owner:             HansBug
+  #          Repository:        pyplantuml-bundled
+  #          Workflow filename: build.yml
+  #          Environment:       pypi
+  #      The `environment: pypi` on this job matches that config so
+  #      OIDC works.
+  #   2. GitHub Release — `gh release upload` attaches every built
+  #      wheel to the release that triggered the workflow.  The
+  #      `GITHUB_TOKEN` is injected automatically.
+  # ------------------------------------------------------------------
+  publish:
+    name: Publish wheels to PyPI + Release
+    needs:
+      - collect
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-22.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pyplantuml-bundled
+    permissions:
+      contents: write       # for gh release upload
+      id-token: write       # for PyPI OIDC
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: all-wheels
+          path: dist
+
+      - name: List wheels to publish
+        run: ls -lh dist/
+
+      - name: Publish to PyPI (OIDC trusted publisher)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          # Skip wheels already on PyPI — re-running a release should
+          # not fail just because a previous attempt got the wheels up.
+          skip-existing: true
+
+      - name: Upload wheels to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -e
+          gh release upload "$RELEASE_TAG" dist/*.whl --clobber

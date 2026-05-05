@@ -6,6 +6,11 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+  # Release events trigger the `publish_release` job (GitHub Release
+  # asset upload).  Portable binaries are not pip-installable so they
+  # do NOT go to PyPI — that's the wheel workflow's job.
+  release:
+    types: [published]
 
 concurrency:
   group: portable-${{ github.ref }}
@@ -588,3 +593,49 @@ jobs:
           DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
           PLANTUML="$PWD/$DIR/plantuml.exe" \
             python -m pytest tests_portable/ -v --tb=short --color=no
+
+  # ------------------------------------------------------------------
+  # FINAL STAGE — publish portable binaries to the GitHub Release.
+  # ONLY runs when the workflow was triggered by a published release.
+  # The `if:` is a belt-and-braces guard on top of the `on: release`
+  # filter.  Portable binaries are NOT pushed to PyPI — they are
+  # standalone executables, not installable Python packages.
+  # ------------------------------------------------------------------
+  publish_release:
+    name: Publish portable binaries to Release
+    needs:
+      - build
+      - test_clean_linux
+      - test_clean_macos_x86
+      - test_clean_windows_x86
+      - test_clean_windows_arm64
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write       # for gh release upload
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all portable artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: portable-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Upload portable binaries to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -e
+          # onefile binaries (no extension on linux/macos, .exe on windows)
+          # and onedir zip archives both ship to the release.
+          gh release upload "$RELEASE_TAG" \
+            dist/plantuml-onefile-* \
+            dist/plantuml-onedir-*.zip \
+            --clobber
