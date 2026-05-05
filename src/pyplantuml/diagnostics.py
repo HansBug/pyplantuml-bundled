@@ -574,19 +574,108 @@ def _is_musl() -> bool:
         return False
 
 
+def _resolve_dt_needed(so_path, search_dirs):
+    """
+    Walk DT_NEEDED of ``so_path`` via the OS dynamic linker (ldd / ld.so),
+    with LD_LIBRARY_PATH augmented by ``search_dirs``.  Returns
+    ``(resolved, missing)`` where each entry is ``(needed, resolved_path)``.
+
+    Implemented via subprocess so the verdict comes from the *actual*
+    system loader the JRE will eventually use, regardless of glibc /
+    musl idiosyncrasies that change in-process ctypes behaviour.
+    """
+    env = os.environ.copy()
+    new_path = os.pathsep.join(str(d) for d in search_dirs)
+    old = env.get("LD_LIBRARY_PATH", "")
+    env["LD_LIBRARY_PATH"] = f"{new_path}:{old}" if old else new_path
+
+    candidate_cmds = [["ldd", str(so_path)]]
+    for ld in (
+        "/lib/ld-musl-x86_64.so.1", "/lib/ld-musl-aarch64.so.1",
+        "/lib/ld-musl-armhf.so.1",
+        "/lib64/ld-linux-x86-64.so.2", "/lib/ld-linux-aarch64.so.1",
+    ):
+        if os.path.exists(ld):
+            candidate_cmds.append([ld, "--list", str(so_path)])
+
+    last_err = None
+    for cmd in candidate_cmds:
+        try:
+            proc = subprocess.run(cmd, env=env, capture_output=True,
+                                  text=True, timeout=15)
+        except (FileNotFoundError, subprocess.SubprocessError) as exc:
+            last_err = exc
+            continue
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if not out.strip():
+            continue
+        resolved, missing = [], []
+        for line in out.splitlines():
+            line = line.strip()
+            if "=>" not in line:
+                continue
+            left, _, right = line.partition("=>")
+            needed = left.strip()
+            target = right.strip().split(" (")[0].strip()
+            if "not found" in target.lower():
+                missing.append((needed, target))
+            else:
+                resolved.append((needed, target))
+        return resolved, missing
+    raise RuntimeError(
+        "no usable dynamic linker found to walk DT_NEEDED of {} (last error: {})"
+        .format(so_path, last_err)
+    )
+
+
+def _v_libfontconfig_chain() -> None:
+    """
+    Verify every DT_NEEDED of the bundled libfontconfig.so.1 resolves to
+    our staged ``runtime/<plat>/lib/`` directory (not to a system path
+    that may be missing on a slim target).  Universal across glibc and
+    musl; the in-process ctypes probe below is a complementary check
+    on glibc only.
+    """
+    import pyplantuml
+    plat = pyplantuml._platform_key()
+    if not plat.startswith("linux"):
+        return
+    lib_dir = pyplantuml.PKG_DIR / "runtime" / plat / "lib"
+    target = lib_dir / "libfontconfig.so.1"
+    if not target.is_file():
+        raise RuntimeError("libfontconfig.so.1 not staged at {}".format(target))
+    _, missing = _resolve_dt_needed(target, [lib_dir])
+    if missing:
+        raise RuntimeError(
+            "libfontconfig.so.1 has unresolved DT_NEEDED entries: "
+            + ", ".join("{} -> {}".format(n, t) for n, t in missing)
+        )
+
+
+def _v_libfreetype_chain() -> None:
+    """Same as _v_libfontconfig_chain but for libfreetype.so.6."""
+    import pyplantuml
+    plat = pyplantuml._platform_key()
+    if not plat.startswith("linux"):
+        return
+    lib_dir = pyplantuml.PKG_DIR / "runtime" / plat / "lib"
+    target = lib_dir / "libfreetype.so.6"
+    if not target.is_file():
+        raise RuntimeError("libfreetype.so.6 not staged at {}".format(target))
+    _, missing = _resolve_dt_needed(target, [lib_dir])
+    if missing:
+        raise RuntimeError(
+            "libfreetype.so.6 has unresolved DT_NEEDED entries: "
+            + ", ".join("{} -> {}".format(n, t) for n, t in missing)
+        )
+
+
 def _v_libfontconfig_loadable() -> None:
-    """ctypes-load libfontconfig.so.1 from the staged path; verify a known
-    symbol is exported.
-
-    Pre-loads the dependency .so files in order so dlopen's DT_NEEDED
-    resolution finds them without relying on LD_LIBRARY_PATH (which is
-    only set inside ``pyplantuml.run`` calls, not during selfcheck).
-
-    Skipped on musl: musl's ld.so does not honour RTLD_GLOBAL for
-    sibling DT_NEEDED resolution the way glibc does, so each dlopen
-    re-walks the file search path. The JRE rendering tests below
-    already exercise the same .so chain end-to-end via subprocess +
-    LD_LIBRARY_PATH, so this in-process probe is redundant on musl.
+    """
+    In-process ctypes load of libfontconfig.so.1 + FcInit() != 0.
+    glibc-only because musl's ld.so does not satisfy DT_NEEDED via
+    RTLD_GLOBAL preloads — the chain check above is the authoritative
+    verifier on musl.
     """
     import ctypes
     import pyplantuml
@@ -596,7 +685,6 @@ def _v_libfontconfig_loadable() -> None:
     if _is_musl():
         return
     lib = pyplantuml.PKG_DIR / "runtime" / plat / "lib"
-    # Load deps first so ld.so already has them when libfontconfig wants them.
     for sub in (
         "libbrotlicommon.so.1", "libbrotlidec.so.1",
         "libpng16.so.16", "libexpat.so.1",
@@ -624,12 +712,10 @@ def _v_libfontconfig_loadable() -> None:
 
 
 def _v_libfreetype_loadable() -> None:
-    """ctypes-load libfreetype.so.6 and call FT_Init_FreeType.
-
-    libfreetype.so.6's DT_NEEDED list pulls in libpng16 / libz / libbrotlidec.
-    ld.so does not look in our staged dir by default, so we preload deps
-    by absolute path before opening libfreetype itself.  Skipped on musl
-    for the same reason _v_libfontconfig_loadable is."""
+    """
+    In-process ctypes load of libfreetype.so.6 + FT_Init_FreeType().
+    glibc-only for the same reason _v_libfontconfig_loadable is.
+    """
     import ctypes
     import pyplantuml
     plat = pyplantuml._platform_key()
@@ -913,14 +999,32 @@ def _build_groups() -> List[Tuple[str, List[Case]]]:
                  "Wheel was built without vendored fonts; reinstall."),
         ]),
         ("Bundled native libraries (Linux)", [
+            # Universal (glibc + musl): walk DT_NEEDED via the OS dynamic
+            # linker with LD_LIBRARY_PATH augmented to include our staged
+            # dir, exactly like the launcher does for the JRE.  Catches a
+            # broken supply chain regardless of libc.
+            Case("libfontconfig_chain",
+                 "ldd libfontconfig.so.1 with LD_LIBRARY_PATH=runtime/lib has no 'not found'",
+                 _v_libfontconfig_chain,
+                 "A DT_NEEDED of libfontconfig.so.1 cannot be resolved within "
+                 "the bundled runtime/<plat>/lib/. Make sure stage_linux_runtime.sh "
+                 "copied every dep (libfreetype, libpng, libexpat, libuuid, libz, "
+                 "libbrotli{dec,common}, libharfbuzz, libgraphite2)."),
+            Case("libfreetype_chain",
+                 "ldd libfreetype.so.6 with LD_LIBRARY_PATH=runtime/lib has no 'not found'",
+                 _v_libfreetype_chain,
+                 "A DT_NEEDED of libfreetype.so.6 cannot be resolved; "
+                 "stage_linux_runtime.sh missed a dep."),
+            # In-process ctypes probes — glibc only because musl's ld.so
+            # does not satisfy DT_NEEDED via RTLD_GLOBAL preloads.  The
+            # chain tests above are the authoritative musl coverage.
             Case("libfontconfig_loadable",
-                 "ctypes.CDLL(libfontconfig.so.1) + FcInit() returns success",
+                 "ctypes.CDLL(libfontconfig.so.1) + FcInit() returns success (glibc)",
                  _v_libfontconfig_loadable,
                  "libfontconfig.so.1 staged but unloadable — likely an ABI "
-                 "mismatch; rebuild inside the matching manylinux/musllinux "
-                 "container."),
+                 "mismatch; rebuild inside the matching manylinux container."),
             Case("libfreetype_loadable",
-                 "ctypes.CDLL(libfreetype.so.6) + FT_Init_FreeType returns 0",
+                 "ctypes.CDLL(libfreetype.so.6) + FT_Init_FreeType returns 0 (glibc)",
                  _v_libfreetype_loadable,
                  "libfreetype.so.6 staged but unloadable — same ABI mismatch "
                  "diagnosis as libfontconfig."),
