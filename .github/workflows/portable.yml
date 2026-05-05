@@ -108,11 +108,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # PyInstaller 5.6+ dropped Python 3.6, PyInstaller 6 dropped 3.7.
-          PYI_PIN=$(python -c 'import sys
-v = sys.version_info[:2]
-if v < (3, 7): print("pyinstaller<5.6")
-elif v < (3, 8): print("pyinstaller<6")
-else: print("pyinstaller")')
+          PYI_PIN=$(python -c 'import sys; v=sys.version_info[:2]; print("pyinstaller<5.6" if v<(3,7) else ("pyinstaller<6" if v<(3,8) else "pyinstaller"))')
           # click 8+ dropped Python 3.6 support.
           CLICK_PIN=$(python -c 'import sys; print("click<8" if sys.version_info < (3, 7) else "click")')
           python -m pip install "$PYI_PIN" "$CLICK_PIN"
@@ -142,11 +138,7 @@ else: print("pyinstaller")')
               JAVA_HOME_GUESS=$(dirname $(dirname $(readlink -f $(command -v javac))))
               export JAVA_HOME="$JAVA_HOME_GUESS"
               echo "JAVA_HOME=$JAVA_HOME"
-              PYI_PIN=$(python -c "import sys
-v = sys.version_info[:2]
-if v < (3, 7): print(\"pyinstaller<5.6\")
-elif v < (3, 8): print(\"pyinstaller<6\")
-else: print(\"pyinstaller\")")
+              PYI_PIN=$(python -c "import sys; v=sys.version_info[:2]; print(\"pyinstaller<5.6\" if v<(3,7) else (\"pyinstaller<6\" if v<(3,8) else \"pyinstaller\"))")
               CLICK_PIN=$(python -c "import sys; print(\"click<8\" if sys.version_info < (3, 7) else \"click\")")
               pip install --no-cache-dir "$PYI_PIN" "$CLICK_PIN"
               bash scripts/fetch_plantuml_jar.sh
