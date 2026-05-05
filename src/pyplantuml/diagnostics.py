@@ -639,8 +639,14 @@ def _resolve_dt_needed(so_path, search_dirs):
     last_err = None
     for cmd in candidate_cmds:
         try:
-            proc = subprocess.run(cmd, env=env, capture_output=True,
-                                  text=True, timeout=15)
+            # subprocess.run gained capture_output=/text= in Python 3.7;
+            # portable executables embed Python 3.6 (build-time floor),
+            # so spell out stdout=PIPE/stderr=PIPE/universal_newlines=True
+            # explicitly.
+            proc = subprocess.run(cmd, env=env,
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE,
+                                  universal_newlines=True, timeout=15)
         except (FileNotFoundError, subprocess.SubprocessError) as exc:
             last_err = exc
             continue

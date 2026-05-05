@@ -49,21 +49,28 @@ _install_optional() {
 if command -v apk >/dev/null 2>&1; then
     PKG=apk
     apk add --no-cache fontconfig freetype libpng expat libuuid zlib 1>&2
-    _install_optional apk brotli-libs harfbuzz
+    # glib + pcre are optional on musl: alpine's harfbuzz is built
+    # without the glib backend so libfontmanager does not pull them in.
+    # Install when available so the lib copy step has them; skip
+    # quietly otherwise.
+    _install_optional apk brotli-libs harfbuzz glib pcre
 elif command -v dnf >/dev/null 2>&1; then
     PKG=dnf
     dnf install -y fontconfig freetype libpng expat libuuid zlib 1>&2
-    _install_optional dnf brotli harfbuzz
+    # glib2 + pcre are required on glibc: CentOS/RHEL/Fedora build
+    # harfbuzz with the glib backend, which makes libfontmanager.so
+    # transitively load libglib-2.0.so.0 → libpcre.so.1.
+    _install_optional dnf brotli harfbuzz glib2 pcre
 elif command -v yum >/dev/null 2>&1; then
     PKG=yum
     yum install -y fontconfig freetype libpng expat libuuid zlib 1>&2
-    _install_optional yum brotli harfbuzz
+    _install_optional yum brotli harfbuzz glib2 pcre
 elif command -v apt-get >/dev/null 2>&1; then
     PKG=apt
     apt-get update -qq 1>&2
     apt-get install -y --no-install-recommends fontconfig libfreetype6 libpng16-16 \
         libexpat1 libuuid1 zlib1g 1>&2
-    _install_optional apt libbrotli1 libharfbuzz0b
+    _install_optional apt libbrotli1 libharfbuzz0b libglib2.0-0 libpcre3
 else
     echo "FATAL: no supported package manager (apk/dnf/yum/apt) found" >&2
     exit 1
@@ -93,10 +100,19 @@ needed=(
     libz.so.1
     libbrotlidec.so.1
     libbrotlicommon.so.1
-    # libharfbuzz is a runtime dep of OpenJDK 17's libfontmanager.so;
-    # bundle it so headless rendering works on slim/scratch targets.
+    # libharfbuzz is a runtime dep of OpenJDK 11+'s libfontmanager.so
+    # (font shaping).  On glibc distros that build harfbuzz with the
+    # glib backend (CentOS / RHEL / Debian / Ubuntu) harfbuzz then
+    # transitively pulls in libglib-2.0.so.0 → libpcre.so.1, so we
+    # must bundle them too — debian-slim / ubuntu / scratch images
+    # do not have libglib2.0-0 pre-installed and java will refuse to
+    # start with UnsatisfiedLinkError.
+    # On musl (alpine), harfbuzz is built without glib and the
+    # missing-library warning is harmless.
     libharfbuzz.so.0
     libgraphite2.so.3
+    libglib-2.0.so.0
+    libpcre.so.1
 )
 
 found_count=0
