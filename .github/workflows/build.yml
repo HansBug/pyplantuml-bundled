@@ -85,21 +85,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # setup-java's hosted tool cache does not yet have Temurin for
-      # windows-11-arm, so install it manually via Adoptium's API.
-      - name: Set up Temurin 17 (Windows ARM64, manual)
+      # Eclipse Temurin 17 ships no Windows-ARM64 build (21+ only), so
+      # use Microsoft Build of OpenJDK 17 for the windows-11-arm runner.
+      # The .so / .dll layout is identical; jlink on either produces a
+      # functionally equivalent stripped JRE.
+      - name: Set up Microsoft OpenJDK 17 (Windows ARM64)
         if: matrix.os == 'windows-11-arm'
-        shell: pwsh
-        run: |
-          $url = 'https://api.adoptium.net/v3/binary/latest/17/ga/windows/aarch64/jdk/hotspot/normal/eclipse'
-          $zip = "$env:RUNNER_TEMP\temurin17.zip"
-          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-          $dest = "$env:RUNNER_TEMP\jdk17"
-          Expand-Archive -Path $zip -DestinationPath $dest -Force
-          $jdk = (Get-ChildItem $dest -Directory)[0].FullName
-          "JAVA_HOME=$jdk"  | Out-File -FilePath $env:GITHUB_ENV  -Append -Encoding utf8
-          "$jdk\bin"        | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          & "$jdk\bin\java.exe" -version
+        uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '17'
 
       - name: Fetch jar + build JRE (macOS / Windows)
         if: runner.os != 'Linux'
