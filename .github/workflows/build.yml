@@ -221,16 +221,25 @@ jobs:
           ALL=$( { cat /etc/apt/sources.list 2>/dev/null; \
                    cat /etc/apt/sources.list.d/*.sources 2>/dev/null; \
                    cat /etc/apt/sources.list.d/*.list 2>/dev/null; } )
-          echo "runner sources excerpt:"
-          printf '%s\n' "$ALL" | head -8
+          echo '--- /etc/apt/sources.list ---'
+          cat /etc/apt/sources.list 2>/dev/null | grep -vE '^\s*(#|$)' || true
+          echo '--- /etc/apt/sources.list.d/ ---'
+          ls -1 /etc/apt/sources.list.d/ 2>/dev/null || true
+          for f in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] || continue
+            echo "--- $f ---"
+            grep -vE '^\s*(#|$)' "$f" || true
+          done
           # Two-stage extraction: find every http(s) URL first, then keep
-          # only ones that point at an ubuntu / debian mirror hostname.
+          # only ones whose hostname *contains* an ubuntu / debian mirror
+          # marker. Match anywhere (not just suffix) since some mirrors
+          # are 'mirrors.azure.com/ubuntu' style with the marker mid-path.
           MIRROR=$(printf '%s\n' "$ALL" \
             | grep -oE 'https?://[A-Za-z0-9.-]+' \
-            | grep -E '\.?(archive\.ubuntu\.com|ports\.ubuntu\.com|security\.ubuntu\.com|deb\.debian\.org|security\.debian\.org)$' \
+            | grep -E '(archive\.ubuntu\.com|ports\.ubuntu\.com|security\.ubuntu\.com|deb\.debian\.org|security\.debian\.org)' \
             | head -1)
           MIRROR=${MIRROR:-}
-          echo "MIRROR=$MIRROR"
+          echo "DETECTED MIRROR=$MIRROR"
           echo "mirror=$MIRROR" >> "$GITHUB_OUTPUT"
       - name: Selfcheck wheel in ${{ matrix.image }}
         shell: bash
