@@ -175,6 +175,34 @@ proc = subprocess.Popen(
 
 **Need GraphViz output (`dot` engine, component / class diagrams with auto-layout)** — install Graphviz separately (`apt install graphviz` / `brew install graphviz`) and PlantUML will pick it up via `$PATH`. Bundling Graphviz is not in scope; it would double the wheel size.
 
+## Portable executables (no Python required)
+
+Beyond the wheel, every release also ships a self-contained PyInstaller-built `plantuml` binary for every `(OS, arch, libc)` slot. These embed Python + PlantUML jar + JRE + (Linux only) the fontconfig stack, so you can drop them on a machine that has neither Python nor Java installed and they Just Work. Two flavours per platform — single self-extracting binary (`plantuml-onefile-<plat>`) and a directory archive (`plantuml-onedir-<plat>.zip`) — downloadable from the [GitHub release page](https://github.com/HansBug/pyplantuml-bundled/releases).
+
+```bash
+curl -LO https://github.com/HansBug/pyplantuml-bundled/releases/latest/download/plantuml-onefile-linux-x86_64-glibc
+chmod +x plantuml-onefile-linux-x86_64-glibc
+./plantuml-onefile-linux-x86_64-glibc -tpng diagram.puml
+./plantuml-onefile-linux-x86_64-glibc selfcheck   # 28-case diagnostic
+```
+
+The portable CI matrix is two-staged: stage 1 builds inside a build container that has Python + JDK + apt (so JRE + fonts + native libs assemble correctly); stage 2 then mounts the resulting binary into a *fully bare* base image (`debian:12-slim`, `ubuntu:22.04`, `alpine:3.20`, `windows-2022`, `macos-14`, …) and runs `plantuml selfcheck` to prove that nothing relies on a tool the build host had but the target won't.
+
+## Self-check (`plantuml selfcheck`)
+
+`plantuml selfcheck` is the diagnostic of last resort: 28 isolated cases that together prove every Python-side and bundled-asset surface still works on the running machine. Each case is wrapped in a `BaseException` catch so the runner finishes even when half the install is broken; output is ANSI-colored PASS/FAIL rows with the offending traceback and a one-line remediation hint per failure.
+
+Cases cover, in order: Python runtime + critical stdlib, the `click` Python dep (`CliRunner` round-trip on a stub command), package layout (jar zip signature, JRE module set, Linux runtime tree, fonts staged), bundled native libs (`ctypes.CDLL` + `FcInit` for libfontconfig, `FT_Init_FreeType` for libfreetype), font signatures (TTF / TTC magic bytes), runtime probes (`java -version`, cache-dir writability, `pyplantuml.version()` banner), end-to-end rendering (PNG / SVG / `-checkonly`), CJK rendering byte-size + width visual proxy, network-blocked offline render, and the PyInstaller `_MEIPASS` layout when running frozen.
+
+```bash
+plantuml selfcheck                  # full report with environment dump
+plantuml selfcheck --no-env         # skip environment dump (faster)
+plantuml selfcheck --no-color       # disable ANSI colour
+plantuml selfcheck --color          # force colour even on non-TTY (CI logs)
+```
+
+Exit code is the count of failed cases (0 when clean).
+
 ## Building from source
 
 ```bash
@@ -187,10 +215,15 @@ export JAVA_HOME=/path/to/jdk17
 make assets               # fetch jar, jlink JRE, stage Linux native libs
 python -m build --wheel   # emits dist/pyplantuml_bundled-*.whl
 pip install pytest dist/*.whl
-pytest tests/             # 12 tests: render PNG/SVG, CJK byte-size, etc.
+pytest tests/             # render PNG/SVG, CJK byte-size, etc.
+
+# Portable executable (onefile + onedir.zip)
+pip install pyinstaller click
+bash scripts/pyinstaller/build.sh
+ls pyinstaller-dist/
 ```
 
-For the multi-platform build matrix see [`.github/workflows/build.yml`](.github/workflows/build.yml). It uses [`cibuildwheel`](https://cibuildwheel.pypa.io/) to produce one wheel per `(OS, arch, libc)` triple, with the `JAVA_HOME` and `LD_LIBRARY_PATH` plumbing wired up per matrix entry.
+For the multi-platform CI see [`.github/workflows/build.yml`](.github/workflows/build.yml) (wheels via `cibuildwheel`) and [`.github/workflows/portable.yml`](.github/workflows/portable.yml) (PyInstaller binaries with stage-1 build + stage-2 clean-env validation).
 
 ## License
 
