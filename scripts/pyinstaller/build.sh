@@ -60,10 +60,15 @@ mv "$ROOT/dist/plantuml" "$OUT/$ONEDIR_BASE"
 
 ZIP_NAME="$OUT/${ONEDIR_BASE}.zip"
 rm -f "$ZIP_NAME"
-case "$(uname -s)" in
-    Linux|Darwin) (cd "$OUT" && zip -qr "${ONEDIR_BASE}.zip" "$ONEDIR_BASE") ;;
-    *) python -c "import shutil; shutil.make_archive(r'$OUT/${ONEDIR_BASE}', 'zip', r'$OUT', r'$ONEDIR_BASE')" ;;
-esac
+# cd into $OUT so we always pass *relative* paths to the archiver. Windows
+# Git Bash converts $OUT to /d/a/... which Python (or zip) on Windows
+# misinterprets as a drive-root path; relative paths sidestep the issue.
+if command -v zip >/dev/null 2>&1; then
+    (cd "$OUT" && zip -qr "${ONEDIR_BASE}.zip" "$ONEDIR_BASE")
+else
+    (cd "$OUT" && python -c \
+        "import shutil; shutil.make_archive('${ONEDIR_BASE}', 'zip', '.', '${ONEDIR_BASE}')")
+fi
 ls -lh "$ZIP_NAME"
 rm -rf "$OUT/$ONEDIR_BASE"
 
