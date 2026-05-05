@@ -200,89 +200,82 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Listed oldest-to-newest within each family.  Stage-2 uses
+        # bare distro images only (debian:* / ubuntu:* / rockylinux:* /
+        # fedora:* / alpine:*), never docker-library/python or other
+        # language-prebuilt images: the entire point of the test is
+        # "user does pip install on a fresh distro and it works", so
+        # python has to come from the distro's own package manager.
+        #
+        # Wheel ABI is manylinux_2_17 (glibc 2.17+, ~CentOS 7 era) and
+        # musllinux_1_1 (musl 1.1+, ~Alpine 3.12 era), so distros as
+        # old as Ubuntu 18.04, Debian 10 and Alpine 3.10 are within
+        # the supported window.  Portable cannot share this matrix:
+        # its build container is Debian 10 (glibc 2.28), which puts
+        # Ubuntu 18.04 (glibc 2.27) below the floor for native exes.
         include:
-          # Modern bare-OS coverage:
+          # Debian family (oldest to newest)
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
-            image: 'debian:12-slim'
+            image: 'debian:10-slim'              # 2019, glibc 2.28 (EOL → archive.debian.org)
+          - label: linux-aarch64-manylinux
+            os: ubuntu-22.04-arm
+            image: 'debian:10-slim'
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
-            image: 'ubuntu:22.04'
-          - label: linux-x86_64-manylinux
-            os: ubuntu-22.04
-            image: 'ubuntu:24.04'
+            image: 'debian:12-slim'              # 2023, glibc 2.36
           - label: linux-aarch64-manylinux
             os: ubuntu-22.04-arm
             image: 'debian:12-slim'
-          - label: linux-aarch64-manylinux
-            os: ubuntu-22.04-arm
-            image: 'ubuntu:22.04'
-          - label: linux-aarch64-manylinux
-            os: ubuntu-22.04-arm
-            image: 'ubuntu:24.04'
-          # 2019-2020-era + older-Python coverage. The wheel ABI is
-          # manylinux_2_17 (glibc 2.17+, CentOS 7 / Debian 8 era) and
-          # musllinux_1_1 (musl 1.1+, Alpine 3.12 era), so even
-          # Alpine 3.10 (musl 1.1.22) and Debian 10 (glibc 2.28) are
-          # in scope.  The python:3.6-slim-buster image additionally
-          # validates the 3.6 install path on a non-bare image.
+          # Ubuntu family (oldest to newest).  ubuntu:18.04 is also
+          # the py3.6 representative — bionic ships python3 = 3.6.9.
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
-            image: 'python:3.6-slim-buster'      # Debian 10, glibc 2.28, py 3.6
+            image: 'ubuntu:18.04'                # 2018, glibc 2.27, py3.6 default
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
-            image: 'debian:10-slim'              # Debian 10 buster, 2019
-          - label: linux-aarch64-manylinux
-            os: ubuntu-22.04-arm
-            image: 'debian:10-slim'              # Debian 10 buster aarch64, 2019
-          - label: linux-aarch64-manylinux
-            os: ubuntu-22.04-arm
-            image: 'python:3.6-slim-buster'      # py 3.6 on aarch64 buster
-          # Pre-2020 LTS Ubuntu coverage. The wheel ABI is
-          # manylinux_2_17 (glibc 2.17, CentOS 7 era), so even
-          # Ubuntu 18.04 (bionic, glibc 2.27, 2018) is well within
-          # the supported window — and a lot of legacy production
-          # boxes still run it.  Portable executables cannot share
-          # this matrix because their build container is Debian 10
-          # (glibc 2.28), which puts ubuntu:18.04 below the floor.
-          - label: linux-x86_64-manylinux
-            os: ubuntu-22.04
-            image: 'ubuntu:18.04'                # bionic, 2018, glibc 2.27
-          - label: linux-x86_64-manylinux
-            os: ubuntu-22.04
-            image: 'ubuntu:20.04'                # focal, 2020, glibc 2.31
+            image: 'ubuntu:20.04'                # 2020, glibc 2.31
           - label: linux-aarch64-manylinux
             os: ubuntu-22.04-arm
             image: 'ubuntu:20.04'
-          # Red Hat family coverage (different package manager + libc
-          # build flavor from debian).  rockylinux:8 = EL8 = glibc 2.28;
-          # rockylinux:9 = EL9 = glibc 2.34; fedora is rolling.  All
-          # well above the manylinux_2_17 floor.
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
-            image: 'rockylinux:8'                # EL8, glibc 2.28
+            image: 'ubuntu:22.04'                # 2022, glibc 2.35
+          - label: linux-aarch64-manylinux
+            os: ubuntu-22.04-arm
+            image: 'ubuntu:22.04'
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
-            image: 'rockylinux:9'                # EL9, glibc 2.34
+            image: 'ubuntu:24.04'                # 2024, glibc 2.39
+          - label: linux-aarch64-manylinux
+            os: ubuntu-22.04-arm
+            image: 'ubuntu:24.04'
+          # Red Hat family (oldest to newest).
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
-            image: 'fedora:40'                   # Fedora 40, rolling
-          # musl coverage
+            image: 'rockylinux:8'                # EL8, 2019, glibc 2.28
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'rockylinux:9'                # EL9, 2022, glibc 2.34
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'fedora:40'                   # Fedora 40, 2024
+          # Alpine / musl family (oldest to newest).
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
-            image: 'alpine:3.20'
+            image: 'alpine:3.10'                 # 2019, musl 1.1.22
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
-            image: 'alpine:3.21'
+            image: 'alpine:3.12'                 # 2020, musl 1.1.24 (musllinux_1_1 floor)
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
-            image: 'alpine:3.10'                 # Alpine 3.10 (2019, musl 1.1.22)
-          - label: linux-x86_64-musllinux
-            os: ubuntu-22.04
-            image: 'alpine:3.12'                 # Alpine 3.12 (2020, musllinux_1_1 floor)
+            image: 'alpine:3.20'                 # 2024
           - label: linux-aarch64-musllinux
             os: ubuntu-22.04-arm
             image: 'alpine:3.20'
+          - label: linux-x86_64-musllinux
+            os: ubuntu-22.04
+            image: 'alpine:3.21'                 # 2024
           - label: linux-aarch64-musllinux
             os: ubuntu-22.04-arm
             image: 'alpine:3.21'
