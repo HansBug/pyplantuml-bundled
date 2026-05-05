@@ -24,20 +24,46 @@ mkdir -p "$DEST/lib" "$DEST/fonts"
 # We list every .so we want, plus the rpm/apk packages that ship them.
 # All non-trivial transitive deps are spelled out so we don't depend on
 # the package manager's "Recommends" set.
+# Install required packages first (everything libfreetype + JRE rendering
+# absolutely needs); install optional libs (brotli for WOFF2, harfbuzz
+# for advanced font shaping, graphite2 for harfbuzz) one at a time so a
+# missing package on some old distro/arch combos does not abort the
+# whole stage. The lib-copy loop later already handles "MISS" gracefully
+# when a .so is not present on disk.
+_install_optional() {
+    local mgr="$1"; shift
+    for pkg in "$@"; do
+        case "$mgr" in
+            apk) apk add --no-cache "$pkg" 1>&2 || \
+                 echo "WARN: optional pkg $pkg unavailable, skipping" >&2 ;;
+            dnf) dnf install -y "$pkg" 1>&2 || \
+                 echo "WARN: optional pkg $pkg unavailable, skipping" >&2 ;;
+            yum) yum install -y "$pkg" 1>&2 || \
+                 echo "WARN: optional pkg $pkg unavailable, skipping" >&2 ;;
+            apt) apt-get install -y --no-install-recommends "$pkg" 1>&2 || \
+                 echo "WARN: optional pkg $pkg unavailable, skipping" >&2 ;;
+        esac
+    done
+}
+
 if command -v apk >/dev/null 2>&1; then
     PKG=apk
-    apk add --no-cache fontconfig freetype libpng expat libuuid zlib brotli-libs harfbuzz 1>&2
+    apk add --no-cache fontconfig freetype libpng expat libuuid zlib 1>&2
+    _install_optional apk brotli-libs harfbuzz
 elif command -v dnf >/dev/null 2>&1; then
     PKG=dnf
-    dnf install -y fontconfig freetype libpng expat libuuid zlib brotli harfbuzz 1>&2
+    dnf install -y fontconfig freetype libpng expat libuuid zlib 1>&2
+    _install_optional dnf brotli harfbuzz
 elif command -v yum >/dev/null 2>&1; then
     PKG=yum
-    yum install -y fontconfig freetype libpng expat libuuid zlib brotli harfbuzz 1>&2
+    yum install -y fontconfig freetype libpng expat libuuid zlib 1>&2
+    _install_optional yum brotli harfbuzz
 elif command -v apt-get >/dev/null 2>&1; then
     PKG=apt
     apt-get update -qq 1>&2
     apt-get install -y --no-install-recommends fontconfig libfreetype6 libpng16-16 \
-        libexpat1 libuuid1 zlib1g libbrotli1 libharfbuzz0b 1>&2
+        libexpat1 libuuid1 zlib1g 1>&2
+    _install_optional apt libbrotli1 libharfbuzz0b
 else
     echo "FATAL: no supported package manager (apk/dnf/yum/apt) found" >&2
     exit 1
