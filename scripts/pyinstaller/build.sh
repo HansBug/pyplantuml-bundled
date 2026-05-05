@@ -63,13 +63,12 @@ ONEFILE_NAME="plantuml-onefile-${PLAT_TAG}${EXE_SUFFIX}"
 cp "$ROOT/dist/plantuml${EXE_SUFFIX}" "$OUT/$ONEFILE_NAME"
 chmod +x "$OUT/$ONEFILE_NAME" || true
 
-# macOS: strip PyInstaller's hardened-runtime flag from the onefile
-# bootloader and re-sign without --options runtime, so the embedded
-# JVM is allowed to mmap PROT_EXEC pages for its codecache (required
-# even when JIT is disabled with -Xint).
+# macOS: PyInstaller already signed everything via the spec
+# (codesign_identity='-' + entitlements_file=...). Verify the
+# entitlements landed instead of resigning blindly.
 if [[ "$(uname -s)" = "Darwin" ]]; then
-    codesign --remove-signature "$OUT/$ONEFILE_NAME" 2>/dev/null || true
-    codesign --force --sign - --timestamp=none "$OUT/$ONEFILE_NAME" || true
+    codesign -d --entitlements - "$OUT/$ONEFILE_NAME" 2>&1 | grep -E 'allow-jit|disable-library-validation' \
+        || echo "WARN: onefile binary missing JIT entitlements"
 fi
 
 ls -lh "$OUT/$ONEFILE_NAME"

@@ -89,6 +89,12 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 EXE_NAME = "plantuml"
 
+# macOS only: tell PyInstaller to ad-hoc sign every bundled binary
+# AND embed our JIT-allowing entitlements file at sign time, so the
+# JVM's PROT_EXEC mmap() succeeds on Apple Silicon.
+_macos_entitlements = str(SPEC_DIR / "entitlements.plist") if sys.platform == "darwin" else None
+_macos_codesign_identity = "-" if sys.platform == "darwin" else None
+
 if flavour == "onefile":
     exe = EXE(
         pyz,
@@ -108,8 +114,8 @@ if flavour == "onefile":
         disable_windowed_traceback=False,
         argv_emulation=False,
         target_arch=None,
-        codesign_identity=None,
-        entitlements_file=None,
+        codesign_identity=_macos_codesign_identity,
+        entitlements_file=_macos_entitlements,
     )
 else:
     exe = EXE(
@@ -123,6 +129,8 @@ else:
         strip=False,
         upx=False,
         console=True,
+        codesign_identity=_macos_codesign_identity,
+        entitlements_file=_macos_entitlements,
     )
     coll = COLLECT(
         exe,
