@@ -30,22 +30,22 @@ jobs:
           - label: linux-x86_64-glibc
             os: ubuntu-22.04
             plat_tag: linux-x86_64-glibc
-            container: 'python:3.6-slim-stretch'   # Debian 9, glibc 2.24, 2017
+            container: 'python:3.6-slim-buster'   # Debian 9, glibc 2.24, 2017
             build_python: '3.6'
           - label: linux-aarch64-glibc
             os: ubuntu-22.04-arm
             plat_tag: linux-aarch64-glibc
-            container: 'python:3.6-slim-stretch'
+            container: 'python:3.6-slim-buster'
             build_python: '3.6'
           - label: linux-x86_64-musl
             os: ubuntu-22.04
             plat_tag: linux-x86_64-musl
-            container: 'python:3.6-alpine3.7'      # Alpine 3.7, musl 1.1.18, 2017
+            container: 'python:3.6-alpine3.10'      # Alpine 3.10, musl 1.1.22, 2019
             build_python: '3.6'
           - label: linux-aarch64-musl
             os: ubuntu-22.04-arm
             plat_tag: linux-aarch64-musl
-            container: 'python:3.6-alpine3.7'
+            container: 'python:3.6-alpine3.10'
             build_python: '3.6'
           - label: macos-x86_64
             os: macos-15-intel
