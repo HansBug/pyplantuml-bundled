@@ -30,12 +30,12 @@ jobs:
           - label: linux-x86_64-glibc
             os: ubuntu-22.04
             plat_tag: linux-x86_64-glibc
-            container: 'python:3.7-slim'           # Debian 10, glibc 2.28
+            container: 'python:3.7-slim-bullseye'           # Debian 10, glibc 2.28
             build_python: '3.7'
           - label: linux-aarch64-glibc
             os: ubuntu-22.04-arm
             plat_tag: linux-aarch64-glibc
-            container: 'python:3.7-slim'
+            container: 'python:3.7-slim-bullseye'
             build_python: '3.7'
           - label: linux-x86_64-musl
             os: ubuntu-22.04

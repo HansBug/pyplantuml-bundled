@@ -33,14 +33,18 @@ test -f src/pyplantuml/plantuml.jar || { echo "FATAL: src/pyplantuml/plantuml.ja
 test -d src/pyplantuml/jre          || { echo "FATAL: src/pyplantuml/jre/ missing"; exit 1; }
 
 # macOS: ad-hoc codesign every JRE dylib + executable BEFORE PyInstaller
-# bundles them, otherwise the onefile PKG archive embeds unsigned mach-o
-# binaries that hardened-runtime rejects when the JIT mmaps PROT_EXEC
-# pages, surfacing as SIGSEGV at PC=0 in libjvm.dylib at first JIT compile.
+# bundles them, AND apply JIT entitlements so the JVM can mmap PROT_EXEC
+# pages under hardened-runtime.  Without entitlements an Apple Silicon
+# JVM crashes with SIGSEGV at PC=0 on first JIT compile even when the
+# binaries are ad-hoc signed.
+ENTITLEMENTS="$ROOT/scripts/pyinstaller/entitlements.plist"
 if [[ "$(uname -s)" = "Darwin" ]]; then
     echo "==> ad-hoc codesigning bundled JRE before PyInstaller"
     find src/pyplantuml/jre -type f \
         \( -perm -u+x -o -name '*.dylib' -o -name '*.jnilib' \) \
-        -exec codesign --force --sign - --timestamp=none {} \; 2>/dev/null || true
+        -exec codesign --force --sign - \
+            --entitlements "$ENTITLEMENTS" \
+            --options runtime --timestamp=none {} \; 2>/dev/null || true
 fi
 
 run_pyi() {
@@ -61,11 +65,13 @@ ONEFILE_NAME="plantuml-onefile-${PLAT_TAG}${EXE_SUFFIX}"
 cp "$ROOT/dist/plantuml${EXE_SUFFIX}" "$OUT/$ONEFILE_NAME"
 chmod +x "$OUT/$ONEFILE_NAME" || true
 
-# macOS: ad-hoc codesign so the bundled JRE's JIT can mmap PROT_EXEC pages
-# under macOS hardened-runtime.  Without this, java -jar crashes with
-# SIGSEGV at PC=0 the first time the JIT compiles a method.
+# macOS: re-sign the onefile bootloader with the same JIT entitlements so
+# the *outer* binary also has them when it execs the embedded JVM.
 if [[ "$(uname -s)" = "Darwin" ]]; then
-    codesign --force --sign - "$OUT/$ONEFILE_NAME" || true
+    codesign --force --sign - \
+        --entitlements "$ENTITLEMENTS" \
+        --options runtime --timestamp=none \
+        "$OUT/$ONEFILE_NAME" || true
 fi
 
 ls -lh "$OUT/$ONEFILE_NAME"
@@ -77,10 +83,13 @@ ONEDIR_BASE="plantuml-onedir-${PLAT_TAG}"
 rm -rf "$OUT/$ONEDIR_BASE"
 mv "$ROOT/dist/plantuml" "$OUT/$ONEDIR_BASE"
 
-# Same JIT-codesign treatment for every binary inside the onedir tree.
+# Same JIT-entitled codesign treatment for every binary inside the onedir tree.
 if [[ "$(uname -s)" = "Darwin" ]]; then
-    find "$OUT/$ONEDIR_BASE" -type f \( -name '*.dylib' -o -name 'java' -o -name 'plantuml' \) \
-        -exec codesign --force --sign - {} \; 2>/dev/null || true
+    find "$OUT/$ONEDIR_BASE" -type f \( -name '*.dylib' -o -name '*.jnilib' \
+            -o -name 'java' -o -name 'plantuml' -o -perm -u+x \) \
+        -exec codesign --force --sign - \
+            --entitlements "$ENTITLEMENTS" \
+            --options runtime --timestamp=none {} \; 2>/dev/null || true
 fi
 
 ZIP_NAME="$OUT/${ONEDIR_BASE}.zip"
