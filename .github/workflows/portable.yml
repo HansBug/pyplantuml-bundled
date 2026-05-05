@@ -289,6 +289,18 @@ jobs:
           DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
           chmod +x "$DIR/plantuml"
           "$DIR/plantuml" selfcheck --no-color --no-env
+      - name: Dump JVM crash log on failure (Apple Silicon JIT diag)
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== codesign verification ==="
+          codesign -d --entitlements - dist/plantuml-onefile-macos-arm64 || true
+          codesign -dvvv dist/plantuml-onefile-macos-arm64 || true
+          echo "=== hs_err logs ==="
+          find / -name 'hs_err_pid*.log' -mtime -1 2>/dev/null | while read f; do
+            echo "----- $f -----"
+            cat "$f" | head -120
+          done
 
   test_clean_windows_x86:
     name: test (clean) / windows-x86_64
