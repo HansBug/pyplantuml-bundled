@@ -181,15 +181,16 @@ jobs:
           - label: linux-x86_64-glibc
             os: ubuntu-22.04
             image: 'ubuntu:24.04'
-          # 2017-2020-era bare-OS coverage for portable exe.
-          # We build the binary on python:3.6-slim-stretch (Debian 9,
-          # glibc 2.24, 2017) so it should run on anything glibc 2.24+.
+          # 2019-era bare-OS coverage for portable exe.
+          # Build container is python:3.6-slim-buster (Debian 10,
+          # glibc 2.28, 2019) so the binary runs on anything glibc 2.28+.
+          # ubuntu:18.04 has glibc 2.27 — *just* below — so it is left
+          # out of the portable matrix; users on Ubuntu 18.04 should
+          # install via wheel where the bundled JRE binds against the
+          # cibuildwheel manylinux_2_28 baseline (also 2.28-bounded).
           - label: linux-x86_64-glibc
             os: ubuntu-22.04
             image: 'debian:10-slim'        # Debian 10 buster (2019, glibc 2.28)
-          - label: linux-x86_64-glibc
-            os: ubuntu-22.04
-            image: 'ubuntu:18.04'          # Ubuntu 18.04 LTS (2018, glibc 2.27)
           - label: linux-aarch64-glibc
             os: ubuntu-22.04-arm
             image: 'debian:12-slim'
@@ -198,7 +199,7 @@ jobs:
             image: 'ubuntu:22.04'
           - label: linux-aarch64-glibc
             os: ubuntu-22.04-arm
-            image: 'ubuntu:18.04'
+            image: 'debian:10-slim'
           # alpine:3.19 EOL'd in Nov 2024 (musl 1.2.4 lacks pwritev2 that
           # Python 3.10 from alpine:3.20+ relies on). Test from 3.20 up only.
           - label: linux-x86_64-musl
