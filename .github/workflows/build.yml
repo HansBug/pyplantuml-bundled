@@ -215,15 +215,21 @@ jobs:
         if: matrix.image != 'alpine:3.20' && matrix.image != 'alpine:3.21'
         shell: bash
         run: |
+          # Concatenate every apt source-listing format the runner might use.
+          # Errors from missing files are swallowed; pipefail must not kill us.
+          set +o pipefail
           ALL=$( { cat /etc/apt/sources.list 2>/dev/null; \
                    cat /etc/apt/sources.list.d/*.sources 2>/dev/null; \
                    cat /etc/apt/sources.list.d/*.list 2>/dev/null; } )
-          # Pull every protocol://host that looks like an ubuntu/debian mirror.
-          MIRROR=$(printf '%s\n' "$ALL" \
-            | grep -oE 'https?://[^ /]+(\.archive\.ubuntu\.com|archive\.ubuntu\.com|ports\.ubuntu\.com|\.deb\.debian\.org|deb\.debian\.org)' \
-            | head -1)
           echo "runner sources excerpt:"
           printf '%s\n' "$ALL" | head -8
+          # Two-stage extraction: find every http(s) URL first, then keep
+          # only ones that point at an ubuntu / debian mirror hostname.
+          MIRROR=$(printf '%s\n' "$ALL" \
+            | grep -oE 'https?://[A-Za-z0-9.-]+' \
+            | grep -E '\.?(archive\.ubuntu\.com|ports\.ubuntu\.com|security\.ubuntu\.com|deb\.debian\.org|security\.debian\.org)$' \
+            | head -1)
+          MIRROR=${MIRROR:-}
           echo "MIRROR=$MIRROR"
           echo "mirror=$MIRROR" >> "$GITHUB_OUTPUT"
       - name: Selfcheck wheel in ${{ matrix.image }}
