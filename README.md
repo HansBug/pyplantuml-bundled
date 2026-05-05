@@ -280,4 +280,4 @@ GPL-3.0-or-later, inherited from PlantUML upstream. The full text of every redis
 
 ## Versioning
 
-The package version mirrors the bundled PlantUML release with a build suffix: `1.2024.7.post1` means PlantUML 1.2024.7 plus this project's first wheel rebuild. Tag a new commit `vX.Y.Z` to trigger a fresh CI release.
+The package version is `<plantuml-version>.<wrapper-revision>` — the first three segments mirror the bundled `plantuml.jar` (e.g. `1.2024.7`), and the trailing segment is bumped on wrapper-only fixes (CI matrix, staging script, click compatibility, new platform support) without an upstream PlantUML change. So `1.2024.7.1` means PlantUML 1.2024.7 plus this project's first wrapper revision. The bundled upstream version is also exposed as `pyplantuml.__plantuml_version__`. Tag a new commit `vX.Y.Z.W` to trigger a fresh CI release.

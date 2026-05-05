@@ -15,9 +15,17 @@ __all__ = [
     "run",
     "PlantUmlError",
     "version",
+    "__version__",
+    "__plantuml_version__",
 ]
 
-__version__ = "1.2024.7.post1"
+# Versioning convention: <plantuml-3-segments>.<wrapper-revision>.
+# First three segments mirror the bundled plantuml.jar; the trailing
+# segment is bumped on wrapper-only fixes (CI, staging, click compat,
+# new platform support, …) without an upstream PlantUML change.
+# Same scheme as jdk4py.  See AGENTS.md for the rationale.
+__version__ = "1.2024.7.1"
+__plantuml_version__ = ".".join(__version__.split(".")[:3])
 
 
 def _resolve_pkg_dir() -> Path:

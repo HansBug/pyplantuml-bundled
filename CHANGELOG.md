@@ -1,8 +1,8 @@
 # Changelog
 
-All notable changes to this project will be documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows the convention `<plantuml-version>.postN` for build numbers.
+All notable changes to this project will be documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows the convention `<plantuml-version>.<wrapper-revision>` for version numbers — first three segments mirror the bundled `plantuml.jar`, the trailing segment is incremented on wrapper-only fixes.
 
-## [1.2024.7.post1] — 2026-05-05
+## [1.2024.7.1] — 2026-05-06
 
 Initial public release.
 
