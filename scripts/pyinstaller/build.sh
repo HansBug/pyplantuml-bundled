@@ -32,6 +32,17 @@ rm -rf "$WORK"
 test -f src/pyplantuml/plantuml.jar || { echo "FATAL: src/pyplantuml/plantuml.jar missing"; exit 1; }
 test -d src/pyplantuml/jre          || { echo "FATAL: src/pyplantuml/jre/ missing"; exit 1; }
 
+# macOS: ad-hoc codesign every JRE dylib + executable BEFORE PyInstaller
+# bundles them, otherwise the onefile PKG archive embeds unsigned mach-o
+# binaries that hardened-runtime rejects when the JIT mmaps PROT_EXEC
+# pages, surfacing as SIGSEGV at PC=0 in libjvm.dylib at first JIT compile.
+if [[ "$(uname -s)" = "Darwin" ]]; then
+    echo "==> ad-hoc codesigning bundled JRE before PyInstaller"
+    find src/pyplantuml/jre -type f \
+        \( -perm -u+x -o -name '*.dylib' -o -name '*.jnilib' \) \
+        -exec codesign --force --sign - --timestamp=none {} \; 2>/dev/null || true
+fi
+
 run_pyi() {
     local flavour="$1"
     rm -rf "$ROOT/build" "$ROOT/dist"

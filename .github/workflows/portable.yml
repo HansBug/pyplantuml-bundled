@@ -22,38 +22,51 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Embedded Python is the lowest version that is still buildable
+          # for each platform/arch slot.  Lower Python = older symbol
+          # baseline = binary runs on more target systems.  3.7 is the
+          # floor; bump only when the slot has no 3.7 build (Apple
+          # Silicon, Windows ARM64).
           - label: linux-x86_64-glibc
             os: ubuntu-22.04
             plat_tag: linux-x86_64-glibc
-            container: 'python:3.10-bullseye'
+            container: 'python:3.7-slim'           # Debian 10, glibc 2.28
+            build_python: '3.7'
           - label: linux-aarch64-glibc
             os: ubuntu-22.04-arm
             plat_tag: linux-aarch64-glibc
-            container: 'python:3.10-bullseye'
+            container: 'python:3.7-slim'
+            build_python: '3.7'
           - label: linux-x86_64-musl
             os: ubuntu-22.04
             plat_tag: linux-x86_64-musl
-            container: 'python:3.10-alpine'
+            container: 'python:3.7-alpine'         # Alpine 3.13, musl 1.2.2
+            build_python: '3.7'
           - label: linux-aarch64-musl
             os: ubuntu-22.04-arm
             plat_tag: linux-aarch64-musl
-            container: 'python:3.10-alpine'
+            container: 'python:3.7-alpine'
+            build_python: '3.7'
           - label: macos-x86_64
             os: macos-15-intel
             plat_tag: macos-x86_64
             container: ''
+            build_python: '3.7'
           - label: macos-arm64
             os: macos-14
             plat_tag: macos-arm64
             container: ''
+            build_python: '3.9'                    # 3.7 has no Apple Silicon build
           - label: windows-x86_64
             os: windows-2022
             plat_tag: windows-x86_64
             container: ''
+            build_python: '3.7'
           - label: windows-arm64
             os: windows-11-arm
             plat_tag: windows-arm64
             container: ''
+            build_python: '3.11'                   # 3.7 has no win-arm64 build
 
     env:
       PYI_PLAT_TAG: ${{ matrix.plat_tag }}
@@ -76,27 +89,20 @@ jobs:
           distribution: microsoft
           java-version: '17'
 
-      - name: Set up Python (macOS / Windows x64)
-        if: runner.os != 'Linux' && matrix.os != 'windows-11-arm'
+      - name: Set up Python (macOS / Windows)
+        if: runner.os != 'Linux'
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-
-      # setup-python's tool cache for Windows ARM64 does not contain
-      # 3.10; bump to 3.11 (which it does have).  PyInstaller produces
-      # a Python-version-agnostic launcher so the bundled CLI is unaffected.
-      - name: Set up Python (Windows ARM64)
-        if: matrix.os == 'windows-11-arm'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+          python-version: ${{ matrix.build_python }}
 
       - name: Build assets + PyInstaller (macOS / Windows)
         if: runner.os != 'Linux'
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller click
+          # PyInstaller 6+ requires Python >= 3.8.
+          PYI_PIN=$(python -c 'import sys; print("pyinstaller<6" if sys.version_info < (3, 8) else "pyinstaller")')
+          python -m pip install "$PYI_PIN" click
           bash scripts/fetch_plantuml_jar.sh
           bash scripts/build_jre.sh
           bash scripts/pyinstaller/build.sh
@@ -123,7 +129,8 @@ jobs:
               JAVA_HOME_GUESS=$(dirname $(dirname $(readlink -f $(command -v javac))))
               export JAVA_HOME="$JAVA_HOME_GUESS"
               echo "JAVA_HOME=$JAVA_HOME"
-              pip install --no-cache-dir pyinstaller click
+              PYI_PIN=$(python -c "import sys; print(\"pyinstaller<6\" if sys.version_info < (3, 8) else \"pyinstaller\")")
+              pip install --no-cache-dir "$PYI_PIN" click
               bash scripts/fetch_plantuml_jar.sh
               bash scripts/build_jre.sh
               bash scripts/stage_linux_runtime.sh
