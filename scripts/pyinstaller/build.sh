@@ -49,6 +49,14 @@ run_pyi onefile
 ONEFILE_NAME="plantuml-onefile-${PLAT_TAG}${EXE_SUFFIX}"
 cp "$ROOT/dist/plantuml${EXE_SUFFIX}" "$OUT/$ONEFILE_NAME"
 chmod +x "$OUT/$ONEFILE_NAME" || true
+
+# macOS: ad-hoc codesign so the bundled JRE's JIT can mmap PROT_EXEC pages
+# under macOS hardened-runtime.  Without this, java -jar crashes with
+# SIGSEGV at PC=0 the first time the JIT compiles a method.
+if [[ "$(uname -s)" = "Darwin" ]]; then
+    codesign --force --sign - "$OUT/$ONEFILE_NAME" || true
+fi
+
 ls -lh "$OUT/$ONEFILE_NAME"
 
 # ---- onedir + zip ------------------------------------------------------
@@ -57,6 +65,12 @@ run_pyi onedir
 ONEDIR_BASE="plantuml-onedir-${PLAT_TAG}"
 rm -rf "$OUT/$ONEDIR_BASE"
 mv "$ROOT/dist/plantuml" "$OUT/$ONEDIR_BASE"
+
+# Same JIT-codesign treatment for every binary inside the onedir tree.
+if [[ "$(uname -s)" = "Darwin" ]]; then
+    find "$OUT/$ONEDIR_BASE" -type f \( -name '*.dylib' -o -name 'java' -o -name 'plantuml' \) \
+        -exec codesign --force --sign - {} \; 2>/dev/null || true
+fi
 
 ZIP_NAME="$OUT/${ONEDIR_BASE}.zip"
 rm -f "$ZIP_NAME"

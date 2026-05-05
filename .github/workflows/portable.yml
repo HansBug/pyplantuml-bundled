@@ -170,15 +170,17 @@ jobs:
           - label: linux-aarch64-glibc
             os: ubuntu-22.04-arm
             image: 'ubuntu:22.04'
-          - label: linux-x86_64-musl
-            os: ubuntu-22.04
-            image: 'alpine:3.19'
+          # alpine:3.19 EOL'd in Nov 2024 (musl 1.2.4 lacks pwritev2 that
+          # Python 3.10 from alpine:3.20+ relies on). Test from 3.20 up only.
           - label: linux-x86_64-musl
             os: ubuntu-22.04
             image: 'alpine:3.20'
+          - label: linux-x86_64-musl
+            os: ubuntu-22.04
+            image: 'alpine:3.21'
           - label: linux-aarch64-musl
             os: ubuntu-22.04-arm
-            image: 'alpine:3.19'
+            image: 'alpine:3.20'
 
     env:
       DOCKER_IMAGE: ${{ matrix.image }}
