@@ -153,6 +153,15 @@ def _build_env_and_java_args() -> tuple:
     ]
 
     plat = _platform_key()
+
+    # macOS Apple Silicon + PyInstaller frozen: hardened-runtime denies
+    # the JVM JIT's mmap(PROT_EXEC) regardless of ad-hoc signing or
+    # entitlements (com.apple.security.cs.allow-jit is only honoured by
+    # Developer-ID signed binaries). Run the JVM in pure interpreter
+    # mode there. PlantUML rendering is small enough that the lack of
+    # JIT is not noticeable.
+    if plat == "macos-aarch64" and getattr(sys, "frozen", False):
+        java_args.append("-Xint")
     runtime_dir = PKG_DIR / "runtime" / plat
     if plat.startswith("linux") and runtime_dir.exists():
         lib_dir = runtime_dir / "lib"
