@@ -168,6 +168,33 @@ def _locate_pkg_dir() -> str:
 
 def main() -> int:
     """Programmatic entry, returns the exit code without exiting."""
+    # Plantuml.jar's CLI uses single-dash flags for everything
+    # (``-version``, ``-help``, ``-tpng``, ``-checkonly``, ``-tsvg``,
+    # ``-DPLANTUML_LIMIT_SIZE=…``, …).  Click cannot parse them
+    # cleanly — ``-version`` for instance is too short to look like a
+    # long option (which click expects to start with ``--``) so click
+    # falls through to subcommand lookup and reports ``Error: No such
+    # command '-version'``.  Detect this case before click sees it
+    # and forward the whole argv straight to the bundled jar, the
+    # same way the no-arg default command would.
+    #
+    # Click's own short flags (``-h`` / ``--help`` / ``-V`` /
+    # ``--version-pyplantuml``) and our two real subcommands
+    # (``info`` / ``selfcheck``) are explicitly preserved so they
+    # still go through click.
+    _KNOWN_CLICK_FLAGS = ("-h", "--help", "-V", "--version-pyplantuml")
+    _KNOWN_SUBCOMMANDS = ("info", "selfcheck")
+    if len(sys.argv) > 1:
+        first = sys.argv[1]
+        if (first not in _KNOWN_SUBCOMMANDS
+                and first.startswith("-")
+                and first not in _KNOWN_CLICK_FLAGS):
+            try:
+                proc = _run(sys.argv[1:], check=False)
+                return proc.returncode
+            except BaseException as exc:
+                sys.stderr.write("plantuml: {}\n".format(exc))
+                return 1
     try:
         cli.main(args=sys.argv[1:], standalone_mode=False)
         return 0
