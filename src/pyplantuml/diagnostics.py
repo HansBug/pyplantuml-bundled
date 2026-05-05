@@ -23,8 +23,6 @@ Design constraints (mirroring the pyfcstm pattern):
 
 The module exposes :func:`run_selfcheck` for the CLI glue.
 """
-from __future__ import annotations
-
 import datetime
 import os
 import platform
@@ -34,30 +32,68 @@ import sys
 import tempfile
 import time
 import traceback
-from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Sequence, Tuple
 
 
 # ---------------------------------------------------------------------------- #
-# Result types
+# Result types — plain classes instead of @dataclass so this module works on
+# Python 3.6 (dataclasses landed in stdlib only in 3.7).
 # ---------------------------------------------------------------------------- #
 
 
-@dataclass
-class Case:
-    name: str
-    method: str
-    func: Callable[[], None]
-    remediation: Optional[str] = None
+def _dataclass_like(cls):
+    """Add dataclass-like __repr__ / __eq__ to a plain class.
+
+    The class must have a class attribute ``__fields__`` listing field
+    names in declaration order. We do this manually to preserve the
+    repr / equality / hash semantics of @dataclass while staying
+    importable on Python 3.6 (where the dataclasses module is missing
+    from stdlib).
+    """
+    fields = cls.__fields__
+
+    def __repr__(self):
+        body = ", ".join("{}={!r}".format(f, getattr(self, f)) for f in fields)
+        return "{}({})".format(type(self).__name__, body)
+
+    def __eq__(self, other):
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return all(getattr(self, f) == getattr(other, f) for f in fields)
+
+    def __hash__(self):
+        try:
+            return hash(tuple(getattr(self, f) for f in fields))
+        except TypeError:  # one of the fields is unhashable; fall back to id
+            return id(self)
+
+    cls.__repr__ = __repr__
+    cls.__eq__ = __eq__
+    cls.__hash__ = __hash__
+    return cls
 
 
-@dataclass
-class Result:
-    case: Case
-    status: str  # "PASS" | "FAIL"
-    elapsed_ms: float
-    error: Optional[BaseException] = None
-    traceback_text: Optional[str] = None
+@_dataclass_like
+class Case(object):
+    __fields__ = ("name", "method", "func", "remediation")
+
+    def __init__(self, name, method, func, remediation=None):
+        self.name = name
+        self.method = method
+        self.func = func
+        self.remediation = remediation
+
+
+@_dataclass_like
+class Result(object):
+    __fields__ = ("case", "status", "elapsed_ms", "error", "traceback_text")
+
+    def __init__(self, case, status, elapsed_ms, error=None, traceback_text=None):
+        self.case = case
+        self.status = status
+        self.elapsed_ms = elapsed_ms
+        self.error = error
+        self.traceback_text = traceback_text
 
 
 # ---------------------------------------------------------------------------- #
@@ -144,11 +180,11 @@ _BAD_PUML = "@startuml\nA -> @@@ broken\n@enduml\n"
 # ---------------------------------------------------------------------------- #
 
 
-def _v_python_floor() -> None:
-    if sys.version_info < (3, 7):
+def _v_python_floor():
+    if sys.version_info < (3, 6):
         raise RuntimeError(
-            "Python {} is below the supported floor (3.7+). pyplantuml-bundled "
-            "targets the 3.7-3.14 envelope.".format(sys.version.split()[0])
+            "Python {} is below the supported floor (3.6+). pyplantuml-bundled "
+            "targets the 3.6-3.14 envelope.".format(sys.version.split()[0])
         )
 
 
@@ -221,7 +257,8 @@ def _v_java_runs() -> None:
     import pyplantuml
     proc = subprocess.run(
         [str(pyplantuml.JAVA_BIN), "-version"],
-        capture_output=True, text=True, timeout=20,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True, timeout=20,
     )
     if proc.returncode != 0:
         raise RuntimeError(
@@ -242,7 +279,8 @@ def _v_jre_module_set() -> None:
     import pyplantuml
     proc = subprocess.run(
         [str(pyplantuml.JAVA_BIN), "--list-modules"],
-        capture_output=True, text=True, timeout=20,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        universal_newlines=True, timeout=20,
     )
     if proc.returncode != 0:
         raise RuntimeError(

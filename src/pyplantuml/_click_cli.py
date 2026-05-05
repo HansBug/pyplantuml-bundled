@@ -14,8 +14,6 @@ Why a sub-command-with-passthrough rather than a single argv parser:
 - ``plantuml selfcheck`` should feel like a normal Click sub-command
   (``--help``, ``--no-color``, etc.).
 """
-from __future__ import annotations
-
 import sys
 from typing import List
 

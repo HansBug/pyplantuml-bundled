@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/build.yml/badge.svg)](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/build.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPLv3%2B-blue)](LICENSE)
-[![Python: 3.7–3.14](https://img.shields.io/badge/python-3.7--3.14-blue)]()
+[![Python: 3.6–3.14](https://img.shields.io/badge/python-3.6--3.14-blue)]()
 [![PlantUML: 1.2024.7](https://img.shields.io/badge/plantuml-1.2024.7-orange)](https://github.com/plantuml/plantuml)
 
 `pip install pyplantuml-bundled` and you have a working PlantUML — no system Java, no `apt install fontconfig`, no extra fonts. Even on a `python:3.10-slim` or `alpine` container that ships nothing but the Python interpreter, this package renders PlantUML diagrams (including CJK text) out of the box.

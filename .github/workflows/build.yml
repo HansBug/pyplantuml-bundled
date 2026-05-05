@@ -169,6 +169,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Modern bare-OS coverage:
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
             image: 'debian:12-slim'
@@ -184,12 +185,32 @@ jobs:
           - label: linux-aarch64-manylinux
             os: ubuntu-22.04-arm
             image: 'ubuntu:22.04'
+          # Older Linux + older Python coverage (2017-2020 era).
+          # ubuntu:18.04 ships Python 3.6 by default, debian:10 ships 3.7.
+          # python:3.6-slim-stretch / python:3.6-buster validate the
+          # 3.6 floor on a non-bare image (with python preinstalled).
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'python:3.6-slim-stretch'
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'python:3.6-slim-buster'
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'debian:10-slim'
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'ubuntu:18.04'
+          # Modern + older musl coverage
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
             image: 'alpine:3.20'
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
             image: 'alpine:3.21'
+          - label: linux-x86_64-musllinux
+            os: ubuntu-22.04
+            image: 'alpine:3.10'
           - label: linux-aarch64-musllinux
             os: ubuntu-22.04-arm
             image: 'alpine:3.20'

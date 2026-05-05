@@ -7,11 +7,13 @@ name = "pyplantuml-bundled"
 version = "1.2024.7.post1"
 description = "PlantUML with a bundled JRE and fonts — pip install and run, no system Java required"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.6"
 license = { text = "GPL-3.0-or-later" }
 authors = [{ name = "Hankson Bradley", email = "hansbug@buaa.edu.cn" }]
 dependencies = [
-  "click>=7.0",
+  # Click 8+ dropped Python 3.6 support; pin <8 there, latest elsewhere.
+  "click>=7.0,<8.0; python_version<'3.7'",
+  "click>=7.0; python_version>='3.7'",
 ]
 keywords = ["plantuml", "uml", "diagram", "jre", "bundled"]
 classifiers = [
@@ -19,6 +21,7 @@ classifiers = [
   "Intended Audience :: Developers",
   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.6",
   "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
