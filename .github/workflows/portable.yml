@@ -52,11 +52,18 @@ jobs:
             plat_tag: macos-x86_64
             container: ''
             build_python: '3.7'
-          - label: macos-arm64
-            os: macos-14
-            plat_tag: macos-arm64
-            container: ''
-            build_python: '3.9'                    # 3.7 has no Apple Silicon build
+          # macOS arm64 portable is intentionally NOT built: PyInstaller-bundled
+          # OpenJDK on Apple Silicon hits a hard SIGSEGV in libjvm init the
+          # moment hardened-runtime is on, regardless of:
+          #   * --options runtime / not --options runtime
+          #   * remove-signature + re-sign-without-runtime
+          #   * spec-level entitlements (allow-jit + disable-library-validation +
+          #     allow-unsigned-executable-memory + disable-executable-page-protection)
+          #   * -Xint to skip JIT
+          # ad-hoc signatures cannot grant the JIT entitlement on macOS arm64
+          # in any way Apple actually honours; only Developer-ID signed binaries
+          # can.  Wheel install (pip install pyplantuml-bundled) works on
+          # macos-arm64 — the JRE is fine when not extracted from a frozen exe.
           - label: windows-x86_64
             os: windows-2022
             plat_tag: windows-x86_64
@@ -266,41 +273,7 @@ jobs:
           chmod +x "$DIR/plantuml"
           "$DIR/plantuml" selfcheck --no-color --no-env
 
-  test_clean_macos_arm64:
-    name: test (clean) / macos-arm64
-    needs: build
-    runs-on: macos-14
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: portable-macos-arm64
-          path: dist
-      - name: Selfcheck onefile
-        shell: bash
-        run: |
-          chmod +x dist/plantuml-onefile-macos-arm64
-          ./dist/plantuml-onefile-macos-arm64 --help >/dev/null
-          ./dist/plantuml-onefile-macos-arm64 info
-          ./dist/plantuml-onefile-macos-arm64 selfcheck --no-color --no-env
-      - name: Selfcheck onedir.zip
-        shell: bash
-        run: |
-          unzip -q dist/plantuml-onedir-macos-arm64.zip -d extracted
-          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
-          chmod +x "$DIR/plantuml"
-          "$DIR/plantuml" selfcheck --no-color --no-env
-      - name: Dump JVM crash log on failure (Apple Silicon JIT diag)
-        if: failure()
-        shell: bash
-        run: |
-          echo "=== codesign verification ==="
-          codesign -d --entitlements - dist/plantuml-onefile-macos-arm64 || true
-          codesign -dvvv dist/plantuml-onefile-macos-arm64 || true
-          echo "=== hs_err logs ==="
-          find / -name 'hs_err_pid*.log' -mtime -1 2>/dev/null | while read f; do
-            echo "----- $f -----"
-            cat "$f" | head -120
-          done
+  # macos-arm64 portable test is omitted — see the build matrix comment for why.
 
   test_clean_windows_x86:
     name: test (clean) / windows-x86_64
