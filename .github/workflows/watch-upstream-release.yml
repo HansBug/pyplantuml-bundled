@@ -1,0 +1,155 @@
+name: Watch upstream PlantUML release
+
+# Detects new releases of plantuml/plantuml and proposes a version bump
+# via PR.  This workflow does NOT publish — it only opens a PR so a
+# human reviews the new upstream version (CHANGELOG entry, jar SHA,
+# CI green light) before merging.  After merge, manually create a
+# GitHub release for the new tag to fire build.yml/portable.yml's
+# publish stages.
+#
+# Modeled after HansBug/codex-portable's watch-upstream-release.yml.
+#
+# Schedule is intentionally OFF for now — uncomment the `schedule:`
+# block below when you're ready to enable automatic detection.  Until
+# then this workflow only runs on manual dispatch.
+#
+# Security: every value derived from `inputs.*` (target_version,
+# wrapper_rev, force) and from external API responses (the resolved
+# target version) is passed into `run:` blocks via `env:` mappings,
+# NEVER as direct `${{ ... }}` interpolation inside the script body.
+
+on:
+  # schedule:
+  #   # Every 6 hours.  PlantUML releases ~monthly so this is plenty.
+  #   - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: "PlantUML version to switch to (e.g. 1.2024.8). Leave empty to auto-detect latest from plantuml/plantuml releases."
+        required: false
+        default: ""
+        type: string
+      wrapper_rev:
+        description: "Wrapper revision to use for the new version (default 0 for new upstream)."
+        required: false
+        default: "0"
+        type: string
+      force:
+        description: "Open the PR even if the version already matches (useful to re-run sha256)."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: watch-upstream
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Detect + propose upstream PlantUML bump
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve target PlantUML version
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED: ${{ inputs.target_version }}
+        run: |
+          set -euo pipefail
+          if [ -n "${REQUESTED:-}" ]; then
+            target="$REQUESTED"
+          else
+            # Latest stable release tag on plantuml/plantuml.
+            # The GH "latest" endpoint excludes prereleases by default.
+            target=$(gh api repos/plantuml/plantuml/releases/latest --jq '.tag_name' | sed 's/^v//')
+          fi
+          if ! [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Resolved target '$target' is not a 3-segment version" >&2
+            exit 1
+          fi
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "Target PlantUML version: $target"
+
+      - name: Compare to current
+        id: compare
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          current=$(bash scripts/bump_plantuml_version.sh --print-current | awk '/^  plantuml/ {print $3}')
+          echo "Current PlantUML version: $current"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$current" = "$TARGET" ] && [ "${FORCE:-false}" != "true" ]; then
+            echo "already up-to-date — exiting"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run bump script
+        if: steps.compare.outputs.skip != 'true'
+        env:
+          TARGET: ${{ steps.resolve.outputs.target }}
+          WRAPPER_REV: ${{ inputs.wrapper_rev }}
+        run: |
+          set -euo pipefail
+          rev="${WRAPPER_REV:-0}"
+          bash scripts/bump_plantuml_version.sh "$TARGET" "$rev"
+          git diff --stat
+
+      - name: Set up git author
+        if: steps.compare.outputs.skip != 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Open PR
+        if: steps.compare.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ steps.resolve.outputs.target }}
+          WRAPPER_REV: ${{ inputs.wrapper_rev }}
+        run: |
+          set -euo pipefail
+          rev="${WRAPPER_REV:-0}"
+          new_version="${TARGET}.${rev}"
+          branch="auto/bump-plantuml-${new_version}"
+          # Recreate the branch fresh on every dispatch so re-runs
+          # don't pile up stale commits.
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "build: bump bundled PlantUML to ${TARGET} (wrapper rev ${rev})"
+          git push --force-with-lease origin "$branch"
+          # Update PR if branch already had one open; otherwise create new.
+          if existing=$(gh pr view "$branch" --json number --jq '.number' 2>/dev/null); then
+            echo "PR #$existing already exists for $branch — already updated by push."
+          else
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "build: bump bundled PlantUML to ${TARGET}" \
+              --body "$(cat <<EOF
+          Auto-generated bump to PlantUML \`${TARGET}\` (new package version: \`${new_version}\`).
+
+          ### What changed
+          - \`pyproject.toml\`, \`src/pyplantuml/__init__.py\` — version bumped
+          - \`scripts/fetch_plantuml_jar.sh\` — \`PLANTUML_VERSION\` and \`PLANTUML_SHA256\` defaults updated
+          - \`CHANGELOG.md\` — placeholder heading prepended (please fill in body before merging)
+          - \`README.md\` — version mentions / badge updated
+
+          ### Reviewer checklist
+          - [ ] CHANGELOG body filled in with release-worth notes
+          - [ ] CI green (build.yml + portable.yml + unit-test.yml)
+          - [ ] sha256 in \`fetch_plantuml_jar.sh\` matches the official release artifact
+          - [ ] After merge, create a GitHub Release at tag \`v${new_version}\` to fire the publish stages
+          EOF
+          )"
+          fi
