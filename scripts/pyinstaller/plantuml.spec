@@ -36,15 +36,22 @@ ENTRY = SPEC_DIR / "entry.py"
 
 # We want every file under src/pyplantuml/ — Python sources, plantuml.jar,
 # the entire jre/, the runtime/ tree — to land under <_MEIPASS>/pyplantuml/.
-# Walk the tree so PyInstaller's data tuple list captures executables
-# (java) with their permissions intact.
+# Walk the tree and split: shared-library binaries (.so / .dylib / .dll)
+# go into PyInstaller's `binaries` list so its ctypes hook lets the
+# launcher dlopen them at runtime; everything else (jar, fonts, scripts,
+# *.conf templates, etc.) goes into `datas`.
+_BINARY_SUFFIXES = (".so", ".dylib", ".dll", ".jnilib")
+
 datas = []
+binaries = []
 for path in SRC_PKG.rglob("*"):
     if not path.is_file():
         continue
     rel_dir = path.parent.relative_to(SRC_PKG)
     target = "pyplantuml" if str(rel_dir) == "." else str(Path("pyplantuml") / rel_dir)
-    datas.append((str(path), target))
+    name = path.name
+    is_binary = any(name.endswith(suf) for suf in _BINARY_SUFFIXES) or ".so." in name
+    (binaries if is_binary else datas).append((str(path), target))
 
 hiddenimports = [
     "click",
@@ -62,7 +69,7 @@ hiddenimports = [
 a = Analysis(
     [str(ENTRY)],
     pathex=[str(ROOT / "src")],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

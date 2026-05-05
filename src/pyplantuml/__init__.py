@@ -183,23 +183,70 @@ def run(
     check: bool = True,
     timeout: Optional[float] = None,
 ) -> subprocess.CompletedProcess:
-    """Invoke the bundled PlantUML jar with arbitrary CLI args."""
+    """Invoke the bundled PlantUML jar with arbitrary CLI args.
+
+    On non-zero exit when ``check=True`` the raised ``PlantUmlError`` carries
+    the joined command, the return code, *and* the captured stderr/stdout
+    from java itself — important so a self-check failure surfaces the actual
+    JVM diagnostic instead of a bare ``plantuml exited with 1``.
+    """
     auto_env, java_extra = _build_env_and_java_args()
     merged = {**auto_env, **env} if env is not None else auto_env
     cmd = _build_cmd(args, java_extra)
+    # Always capture so we can include the JVM's own message on failure;
+    # if the caller asked for capture too, return the captured strings.
     proc = subprocess.run(
         cmd,
         cwd=str(cwd) if cwd is not None else None,
         env=merged,
-        capture_output=capture_output,
-        text=capture_output,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         timeout=timeout,
     )
+    # Convert bytes to str unconditionally — text=True at subprocess level
+    # would have done this for us, but we did the capture by hand to keep
+    # the failure-path message rich.
+    stdout = proc.stdout.decode("utf-8", errors="replace") if proc.stdout else ""
+    stderr = proc.stderr.decode("utf-8", errors="replace") if proc.stderr else ""
+
+    if not capture_output:
+        # Re-emit on the parent's stdio so callers that do NOT want output
+        # captured (the default plantuml CLI mode) still see java's output.
+        if stdout:
+            try:
+                sys.stdout.write(stdout)
+                sys.stdout.flush()
+            except Exception:
+                pass
+        if stderr:
+            try:
+                sys.stderr.write(stderr)
+                sys.stderr.flush()
+            except Exception:
+                pass
+
+    completed = subprocess.CompletedProcess(
+        args=proc.args, returncode=proc.returncode,
+        stdout=stdout if capture_output else None,
+        stderr=stderr if capture_output else None,
+    )
+
     if check and proc.returncode != 0:
+        # Trim noisy banners but keep enough to debug:
+        def _trim(s: str, head: int = 2000) -> str:
+            return s if len(s) <= head else s[:head] + "\n…(truncated)"
         raise PlantUmlError(
-            f"plantuml exited with {proc.returncode}: {' '.join(cmd)}"
+            "plantuml exited with {rc}\n"
+            "  command : {cmd}\n"
+            "  stderr  : {stderr}\n"
+            "  stdout  : {stdout}".format(
+                rc=proc.returncode,
+                cmd=" ".join(cmd),
+                stderr=_trim(stderr.strip()) or "(empty)",
+                stdout=_trim(stdout.strip()) or "(empty)",
+            )
         )
-    return proc
+    return completed
 
 
 def render(

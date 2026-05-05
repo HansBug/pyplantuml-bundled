@@ -601,13 +601,29 @@ def _v_libfontconfig_loadable() -> None:
 
 
 def _v_libfreetype_loadable() -> None:
-    """ctypes-load libfreetype.so.6 and call FT_Init_FreeType."""
+    """ctypes-load libfreetype.so.6 and call FT_Init_FreeType.
+
+    libfreetype.so.6's DT_NEEDED list pulls in libpng16 / libz / libbrotlidec.
+    ld.so does not look in our staged dir by default, so we preload deps
+    by absolute path before opening libfreetype itself."""
     import ctypes
     import pyplantuml
     plat = pyplantuml._platform_key()
     if not plat.startswith("linux"):
         return
     lib = pyplantuml.PKG_DIR / "runtime" / plat / "lib"
+    for sub in (
+        "libbrotlicommon.so.1", "libbrotlidec.so.1",
+        "libpng16.so.16", "libz.so.1",
+    ):
+        p = lib / sub
+        if p.is_file():
+            try:
+                ctypes.CDLL(str(p), mode=ctypes.RTLD_GLOBAL)
+            except OSError as exc:
+                raise RuntimeError(
+                    "Failed to dlopen freetype dependency {}: {}".format(sub, exc)
+                ) from exc
     handle = ctypes.CDLL(str(lib / "libfreetype.so.6"))
     init_fn = getattr(handle, "FT_Init_FreeType", None)
     if init_fn is None:

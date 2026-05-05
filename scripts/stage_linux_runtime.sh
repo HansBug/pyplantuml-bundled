@@ -26,18 +26,18 @@ mkdir -p "$DEST/lib" "$DEST/fonts"
 # the package manager's "Recommends" set.
 if command -v apk >/dev/null 2>&1; then
     PKG=apk
-    apk add --no-cache fontconfig freetype libpng expat libuuid zlib brotli-libs 1>&2
+    apk add --no-cache fontconfig freetype libpng expat libuuid zlib brotli-libs harfbuzz 1>&2
 elif command -v dnf >/dev/null 2>&1; then
     PKG=dnf
-    dnf install -y fontconfig freetype libpng expat libuuid zlib brotli 1>&2
+    dnf install -y fontconfig freetype libpng expat libuuid zlib brotli harfbuzz 1>&2
 elif command -v yum >/dev/null 2>&1; then
     PKG=yum
-    yum install -y fontconfig freetype libpng expat libuuid zlib brotli 1>&2
+    yum install -y fontconfig freetype libpng expat libuuid zlib brotli harfbuzz 1>&2
 elif command -v apt-get >/dev/null 2>&1; then
     PKG=apt
     apt-get update -qq 1>&2
     apt-get install -y --no-install-recommends fontconfig libfreetype6 libpng16-16 \
-        libexpat1 libuuid1 zlib1g libbrotli1 1>&2
+        libexpat1 libuuid1 zlib1g libbrotli1 libharfbuzz0b 1>&2
 else
     echo "FATAL: no supported package manager (apk/dnf/yum/apt) found" >&2
     exit 1
@@ -67,6 +67,10 @@ needed=(
     libz.so.1
     libbrotlidec.so.1
     libbrotlicommon.so.1
+    # libharfbuzz is a runtime dep of OpenJDK 17's libfontmanager.so;
+    # bundle it so headless rendering works on slim/scratch targets.
+    libharfbuzz.so.0
+    libgraphite2.so.3
 )
 
 found_count=0
