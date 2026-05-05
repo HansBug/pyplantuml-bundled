@@ -129,18 +129,39 @@ Want to use a different JVM (system Java, GraalVM, etc.) for debugging? Set `PYP
 | `LOCALAPPDATA` | Same as above on Windows. |
 | Standard PlantUML env vars (`PLANTUML_LIMIT_SIZE`, `GRAPHVIZ_DOT`, …) | Forwarded to the JVM unchanged. |
 
-## Comparison with related projects
+## Comparison with related open-source projects
 
-| | `pyplantuml-bundled` (this) | `plantuml` (PyPI) | `plantuml-server` (Docker) |
-|---|---|---|---|
-| Install | `pip install` | `pip install` + `apt install default-jre` | `docker pull` |
-| System Java required | **No** | Yes | (in-container) |
-| CJK out of the box | **Yes** (Linux too) | If host has fonts | If host has fonts |
-| Wheel size | 50–60 MB | <1 MB | n/a |
-| Rendering speed | JVM cold-start each call | Same | HTTP, persistent JVM |
-| Best for | CI, scripts, single-shot rendering, sandboxed environments | Dev laptops with Java already installed | Interactive editors, high-throughput servers |
+There are several mature PlantUML-related projects in the Python / Docker ecosystem; each makes a different trade-off between install simplicity, network dependency, and rendering control. The table below benchmarks `pyplantuml-bundled` against the most widely used ones — **column headers link to each project's home / repository**, click through for full details:
 
-For high-volume rendering keep a JVM warm by reusing one `subprocess.Popen` (PlantUML supports a `-pipe` mode that reads multiple diagrams off stdin) — that's an upstream feature you can use through `pyplantuml.run(["-pipe"], …)`.
+| Dimension | [pyplantuml-bundled](https://github.com/HansBug/pyplantuml-bundled) (this) | [python-plantuml](https://github.com/dougn/python-plantuml) | [plantweb](https://github.com/kuralabs/plantweb) | [sphinxcontrib-plantuml](https://github.com/sphinx-contrib/plantuml) | [plantuml-markdown](https://github.com/mikitex70/plantuml-markdown) | [IPlantUML](https://github.com/jbn/IPlantUML) | [plantuml-server](https://github.com/plantuml/plantuml-server) |
+|---|---|---|---|---|---|---|---|
+| **Install** | `pip install` | `pip install` | `pip install` | `pip install` | `pip install` | `pip install` | `docker pull` |
+| **System Java needed** | **No** (bundled JRE) | No (uses remote server) | No (uses remote server) | **Yes** (local `java`) | **Yes** for local mode (or remote) | **Yes** (local `plantuml.jar`) | (built into image) |
+| **Network at render time** | **No** | **Yes** (defaults to public `plantuml.com` server) | **Yes** (defaults to public server) | No | No (local) / Yes (remote) | No | No (HTTP to local container) |
+| **Rendering offline / air-gapped** | ✅ | ❌ unless you run your own server | ❌ unless you run your own server | ✅ | ✅ in local mode | ✅ | ✅ |
+| **CJK on bare Linux container** | ✅ (bundled fontconfig + WenQuanYi MicroHei) | depends on the server's fonts | depends on the server's fonts | ❌ unless you `apt install fontconfig fonts-…` | ❌ same | ❌ same | ✅ (image bundles `fonts-wqy-zenhei`) |
+| **Per-call latency** | JVM cold-start (~1 s) | HTTP round-trip | HTTP round-trip | JVM cold-start | JVM cold-start | JVM cold-start | HTTP (warm JVM, ~ms) |
+| **Approx. footprint** | 50–60 MB / wheel | <100 KB | ~50 KB | <100 KB (+ system JRE) | <100 KB (+ system JRE) | <100 KB (+ jar + JRE) | ~600 MB Docker image |
+| **Sweet spot** | CI, sandboxed scripts, single-shot rendering, no-deps environments | Quick prototypes that have internet | Sphinx + ReadTheDocs (pure-Python rendering) | Sphinx doc builds where the build host already has Java | MkDocs / Markdown sites | Jupyter / IPython notebooks | High-throughput interactive editors and servers |
+
+Quick mental model:
+
+- **Network OK + want zero local cost?** Use [`python-plantuml`](https://github.com/dougn/python-plantuml) or [`plantweb`](https://github.com/kuralabs/plantweb).
+- **Need offline + already have Java + writing Sphinx docs?** Use [`sphinxcontrib-plantuml`](https://github.com/sphinx-contrib/plantuml).
+- **Need offline + zero system prerequisites + reproducible CI?** This package.
+- **Rendering thousands of diagrams a minute?** Run [`plantuml-server`](https://github.com/plantuml/plantuml-server) in Docker and POST to it; the persistent JVM amortises start-up cost away.
+
+For high-volume offline rendering inside this package, keep a JVM warm by reusing one `subprocess.Popen` against PlantUML's `-pipe` mode (reads many diagrams off stdin sequentially):
+
+```python
+import subprocess, pyplantuml
+proc = subprocess.Popen(
+    [str(pyplantuml.JAVA_BIN), "-Djava.awt.headless=true",
+     "-jar", str(pyplantuml.JAR_PATH), "-pipe", "-tpng"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+)
+# write puml source + delimiter to proc.stdin, read PNG bytes back from stdout.
+```
 
 ## Troubleshooting
 
