@@ -22,26 +22,33 @@ jobs:
           # Pick the LOWEST currently-available free runner per platform
           # so the produced wheels work on the widest target environments.
           # ---- Linux ---------------------------------------------------
+          # Use the OLDEST cibuildwheel image still pullable for each
+          # libc family — the image itself is the build host so its
+          # baseline becomes the wheel's runtime requirement.
+          # manylinux2014 = CentOS 7, glibc 2.17 (2014); covers
+          # everything from RHEL 7 / Ubuntu 14.04+ onward.
+          # musllinux_1_1 = Alpine 3.12, musl 1.1.24 (2020); covers
+          # Alpine 3.12+ which is what most musl users have.
           - label: linux-x86_64-manylinux
             os: ubuntu-22.04
             cibw_archs: x86_64
             cibw_build: cp310-manylinux_x86_64
-            plat_tag: manylinux_2_28_x86_64
+            plat_tag: manylinux_2_17_x86_64
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
             cibw_archs: x86_64
             cibw_build: cp310-musllinux_x86_64
-            plat_tag: musllinux_1_2_x86_64
+            plat_tag: musllinux_1_1_x86_64
           - label: linux-aarch64-manylinux
             os: ubuntu-22.04-arm
             cibw_archs: aarch64
             cibw_build: cp310-manylinux_aarch64
-            plat_tag: manylinux_2_28_aarch64
+            plat_tag: manylinux_2_17_aarch64
           - label: linux-aarch64-musllinux
             os: ubuntu-22.04-arm
             cibw_archs: aarch64
             cibw_build: cp310-musllinux_aarch64
-            plat_tag: musllinux_1_2_aarch64
+            plat_tag: musllinux_1_1_aarch64
 
           # ---- macOS ---------------------------------------------------
           # macos-13 was retired Dec 2025.  macos-14 is the lowest free
@@ -109,24 +116,49 @@ jobs:
           CIBW_BUILD: ${{ matrix.cibw_build }}
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
-          # Force the modern manylinux baseline; the default (manylinux2014,
-          # CentOS 7) was removed when CentOS 7 went EOL in 2024.
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
-          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+          # Pin to the OLD images.
+          # cibuildwheel-default `manylinux_2_28` would cap us at glibc 2.28+
+          # (Debian 10+ / RHEL 8+). manylinux2014 (CentOS 7, glibc 2.17)
+          # widens to anything 2014+.
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+          CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
+          CIBW_MUSLLINUX_X86_64_IMAGE: musllinux_1_1
+          CIBW_MUSLLINUX_AARCH64_IMAGE: musllinux_1_1
 
           CIBW_BEFORE_ALL_LINUX: |
             set -euo pipefail
-            if command -v dnf >/dev/null 2>&1; then
-              dnf install -y java-17-openjdk-devel java-17-openjdk-jmods fontconfig freetype which findutils
-            elif command -v yum >/dev/null 2>&1; then
-              yum install -y java-17-openjdk-devel java-17-openjdk-jmods fontconfig freetype which findutils
-            elif command -v apk >/dev/null 2>&1; then
-              apk add --no-cache openjdk17 fontconfig freetype bash coreutils findutils
-            else
-              echo "no supported package manager"; exit 1
+            # CentOS 7 reached EOL July 2024; mirror.centos.org returns 404.
+            # Move yum to vault.centos.org which still hosts the archive.
+            if [ -d /etc/yum.repos.d ]; then
+              for r in /etc/yum.repos.d/CentOS-*.repo; do
+                [ -f "$r" ] && sed -i \
+                  -e 's|^mirrorlist=|#mirrorlist=|g' \
+                  -e 's|^#baseurl=http://mirror.centos.org/centos|baseurl=http://vault.centos.org|g' \
+                  "$r"
+              done
             fi
-            export JAVA_HOME=$(dirname $(dirname $(readlink -f $(command -v javac))))
+            # CentOS 7 has only openjdk-11 in repos, not 17. Pull the
+            # Eclipse Temurin 17 tarball for the right arch and use it
+            # as JAVA_HOME.  alpine has openjdk17 in apk directly.
+            if command -v apk >/dev/null 2>&1; then
+              apk add --no-cache openjdk17 fontconfig freetype bash coreutils findutils curl
+              export JAVA_HOME=$(dirname $(dirname $(readlink -f $(command -v javac))))
+            else
+              yum install -y curl tar gzip fontconfig freetype which findutils \
+                || dnf install -y curl tar gzip fontconfig freetype which findutils
+              ARCH=$(uname -m)
+              case "$ARCH" in
+                x86_64)  TEMURIN_ARCH=x64 ;;
+                aarch64) TEMURIN_ARCH=aarch64 ;;
+                *) echo "unsupported arch $ARCH"; exit 1 ;;
+              esac
+              JDK_URL="https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.18%2B8/OpenJDK17U-jdk_${TEMURIN_ARCH}_linux_hotspot_17.0.18_8.tar.gz"
+              mkdir -p /opt/jdk17
+              curl -fsSL "$JDK_URL" | tar xz -C /opt/jdk17 --strip-components=1
+              export JAVA_HOME=/opt/jdk17
+            fi
             echo "JAVA_HOME=$JAVA_HOME"
+            "$JAVA_HOME/bin/jlink" --version
             bash scripts/fetch_plantuml_jar.sh
             bash scripts/build_jre.sh
             bash scripts/stage_linux_runtime.sh
