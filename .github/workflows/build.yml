@@ -19,49 +19,50 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Pick the LOWEST currently-available free runner per platform
+          # so the produced wheels work on the widest target environments.
           # ---- Linux ---------------------------------------------------
-          # ubuntu-24.04 / -arm are LTS through 2029 and currently free.
           - label: linux-x86_64-manylinux
-            os: ubuntu-24.04
+            os: ubuntu-22.04
             cibw_archs: x86_64
             cibw_build: cp310-manylinux_x86_64
             plat_tag: manylinux_2_28_x86_64
           - label: linux-x86_64-musllinux
-            os: ubuntu-24.04
+            os: ubuntu-22.04
             cibw_archs: x86_64
             cibw_build: cp310-musllinux_x86_64
             plat_tag: musllinux_1_2_x86_64
           - label: linux-aarch64-manylinux
-            os: ubuntu-24.04-arm
+            os: ubuntu-22.04-arm
             cibw_archs: aarch64
             cibw_build: cp310-manylinux_aarch64
             plat_tag: manylinux_2_28_aarch64
           - label: linux-aarch64-musllinux
-            os: ubuntu-24.04-arm
+            os: ubuntu-22.04-arm
             cibw_archs: aarch64
             cibw_build: cp310-musllinux_aarch64
             plat_tag: musllinux_1_2_aarch64
 
           # ---- macOS ---------------------------------------------------
-          # macos-13 is gone as of Dec 2025.
-          # macos-15-intel is the last x86_64 image, supported until Aug 2027.
-          # macos-15 is arm64 (Apple Silicon).
+          # macos-13 was retired Dec 2025.  macos-14 is the lowest free
+          # arm64 image; macos-15-intel is the *only* remaining x86_64
+          # image (supported through Aug 2027).
           - label: macos-x86_64
             os: macos-15-intel
             cibw_archs: x86_64
             cibw_build: cp310-macosx_x86_64
             plat_tag: ''
           - label: macos-arm64
-            os: macos-15
+            os: macos-14
             cibw_archs: arm64
             cibw_build: cp310-macosx_arm64
             plat_tag: ''
 
           # ---- Windows -------------------------------------------------
-          # windows-2025 is supported through 2034.
-          # windows-11-arm is GA for public repos.
+          # windows-2022 is the oldest free Win runner; windows-11-arm is
+          # the only Windows arm64 option.
           - label: windows-x86_64
-            os: windows-2025
+            os: windows-2022
             cibw_archs: AMD64
             cibw_build: cp310-win_amd64
             plat_tag: ''
@@ -140,7 +141,7 @@ jobs:
   collect:
     name: Collect & list wheels
     needs: build_wheels
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/download-artifact@v4
         with:
