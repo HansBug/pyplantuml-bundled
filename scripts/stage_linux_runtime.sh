@@ -89,6 +89,14 @@ SEARCH_DIRS=(
     /usr/lib/aarch64-linux-gnu
     /usr/lib/x86_64-linux-musl
     /usr/lib/aarch64-linux-musl
+    # Pre-usrmerge debian / ubuntu (Debian 10 / 11) put some shared
+    # libraries under /lib/<triplet> rather than /usr/lib/<triplet>;
+    # libpcre3:arm64 on debian-buster lives at
+    # /lib/aarch64-linux-gnu/libpcre.so.3, for example.
+    /lib/x86_64-linux-gnu
+    /lib/aarch64-linux-gnu
+    /lib/x86_64-linux-musl
+    /lib/aarch64-linux-musl
 )
 
 # Each entry is one or more "|"-separated candidate SONAMEs.  We
@@ -155,7 +163,7 @@ if [[ ! -e "$DEST/lib/libfontconfig.so.1" ]] || [[ ! -e "$DEST/lib/libfreetype.s
     echo "FATAL: libfontconfig.so.1 and/or libfreetype.so.6 not staged" >&2
     exit 1
 fi
-echo "staged $found_count of ${#needed[@]} libraries"
+echo "staged $found_count of ${#needed_groups[@]} libraries"
 
 # ---- 3. vendored fonts -------------------------------------------------
 VENDOR_DIR="$ROOT/vendored/fonts"
