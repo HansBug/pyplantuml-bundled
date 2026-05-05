@@ -1,6 +1,4 @@
 """End-to-end tests using the public Python API."""
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

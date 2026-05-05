@@ -15,8 +15,6 @@ return code.  Instead we use two complementary signals:
    un-mapped glyphs which collapses widths and yields a much narrower
    image.  A real CJK render of CJK_PUML lands at >=500 px wide.
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 from pyplantuml import render
