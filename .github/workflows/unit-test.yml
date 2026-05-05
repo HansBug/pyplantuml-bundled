@@ -1,0 +1,71 @@
+name: Unit tests
+
+# Lightweight feedback loop: just runs `pytest tests/` on a few Python
+# versions on Linux.  This is the "developer fast path" — it does NOT
+# replace `build.yml` (which does the cross-platform wheel build + the
+# 22-distro stage-2 matrix) or `portable.yml` (PyInstaller binaries).
+#
+# Why no `stage_linux_runtime.sh` here?  That script's job is to copy
+# the libfontconfig/freetype/CJK chain *out of* a manylinux/musllinux
+# container *into* the wheel; running it on an ubuntu-22.04 host runner
+# would pull the wrong SONAMEs.  Instead we install the equivalent
+# packages from apt and let `pyplantuml/__init__.py` fall back to
+# system fontconfig (the `if runtime_dir.exists()` branch).
+#
+# Security note: this workflow does not consume any user-provided
+# strings (issue/PR titles, commit messages, head_ref, etc.) in `run:`
+# blocks, so there is no command-injection surface.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: unit-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest / py${{ matrix.python-version }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # CJK fonts so test_cjk.py's PNG-size assertions pass.
+      # WenQuanYi MicroHei = same font family that the wheel bundles
+      # under vendored/fonts/, so behavior matches the shipped artifact.
+      - name: Install host fonts + freetype
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            fontconfig fonts-wqy-microhei fonts-dejavu-core libfreetype6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Stage assets (jar + jre)
+        run: |
+          bash scripts/fetch_plantuml_jar.sh
+          bash scripts/build_jre.sh
+
+      - name: Install package + pytest
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v --tb=short --color=no
