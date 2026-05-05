@@ -452,7 +452,12 @@ jobs:
         run: |
           set -e
           source .v/bin/activate
-          PLANTUML=$(command -v plantuml)
+          # 'command -v plantuml' on git-bash + windows returns the
+          # path *without* the .exe suffix, then 'sh "$PLANTUML"' cannot
+          # actually launch it.  shutil.which handles PATHEXT on windows
+          # and just returns the binary path on mac/linux.
+          PLANTUML=$(python -c "import shutil,sys; sys.stdout.write(shutil.which('plantuml') or '')")
+          test -n "$PLANTUML" || { echo "plantuml not on PATH"; exit 1; }
           export PLANTUML
           sh scripts/portable_smoketest.sh
       - name: Pytest wheel in fresh venv
@@ -496,7 +501,12 @@ jobs:
         run: |
           set -e
           source .v/bin/activate
-          PLANTUML=$(command -v plantuml)
+          # 'command -v plantuml' on git-bash + windows returns the
+          # path *without* the .exe suffix, then 'sh "$PLANTUML"' cannot
+          # actually launch it.  shutil.which handles PATHEXT on windows
+          # and just returns the binary path on mac/linux.
+          PLANTUML=$(python -c "import shutil,sys; sys.stdout.write(shutil.which('plantuml') or '')")
+          test -n "$PLANTUML" || { echo "plantuml not on PATH"; exit 1; }
           export PLANTUML
           sh scripts/portable_smoketest.sh
       - name: Pytest wheel in fresh venv
@@ -540,7 +550,12 @@ jobs:
         run: |
           set -e
           source .v/Scripts/activate
-          PLANTUML=$(command -v plantuml)
+          # 'command -v plantuml' on git-bash + windows returns the
+          # path *without* the .exe suffix, then 'sh "$PLANTUML"' cannot
+          # actually launch it.  shutil.which handles PATHEXT on windows
+          # and just returns the binary path on mac/linux.
+          PLANTUML=$(python -c "import shutil,sys; sys.stdout.write(shutil.which('plantuml') or '')")
+          test -n "$PLANTUML" || { echo "plantuml not on PATH"; exit 1; }
           export PLANTUML
           sh scripts/portable_smoketest.sh
       - name: Pytest wheel in fresh venv
@@ -591,7 +606,12 @@ jobs:
         run: |
           set -e
           source .v/Scripts/activate
-          PLANTUML=$(command -v plantuml)
+          # 'command -v plantuml' on git-bash + windows returns the
+          # path *without* the .exe suffix, then 'sh "$PLANTUML"' cannot
+          # actually launch it.  shutil.which handles PATHEXT on windows
+          # and just returns the binary path on mac/linux.
+          PLANTUML=$(python -c "import shutil,sys; sys.stdout.write(shutil.which('plantuml') or '')")
+          test -n "$PLANTUML" || { echo "plantuml not on PATH"; exit 1; }
           export PLANTUML
           sh scripts/portable_smoketest.sh
       - name: Pytest wheel in fresh venv
