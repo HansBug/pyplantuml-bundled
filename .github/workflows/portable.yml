@@ -1,0 +1,318 @@
+name: Portable executables
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: portable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------------
+  # Stage 1: build the PyInstaller executable on a fully-equipped runner.
+  # ------------------------------------------------------------------
+  build:
+    name: build / ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            plat_tag: linux-x86_64-glibc
+            container: 'python:3.10-bullseye'
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            plat_tag: linux-aarch64-glibc
+            container: 'python:3.10-bullseye'
+          - label: linux-x86_64-musl
+            os: ubuntu-22.04
+            plat_tag: linux-x86_64-musl
+            container: 'python:3.10-alpine'
+          - label: linux-aarch64-musl
+            os: ubuntu-22.04-arm
+            plat_tag: linux-aarch64-musl
+            container: 'python:3.10-alpine'
+          - label: macos-x86_64
+            os: macos-15-intel
+            plat_tag: macos-x86_64
+            container: ''
+          - label: macos-arm64
+            os: macos-14
+            plat_tag: macos-arm64
+            container: ''
+          - label: windows-x86_64
+            os: windows-2022
+            plat_tag: windows-x86_64
+            container: ''
+          - label: windows-arm64
+            os: windows-11-arm
+            plat_tag: windows-arm64
+            container: ''
+
+    env:
+      PYI_PLAT_TAG: ${{ matrix.plat_tag }}
+      BUILD_CONTAINER: ${{ matrix.container }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Temurin 17 (macOS / Windows x64)
+        if: runner.os != 'Linux' && matrix.os != 'windows-11-arm'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Microsoft OpenJDK 17 (Windows ARM64)
+        if: matrix.os == 'windows-11-arm'
+        uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '17'
+
+      - name: Set up Python 3.10 (macOS / Windows)
+        if: runner.os != 'Linux'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Build assets + PyInstaller (macOS / Windows)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller click
+          bash scripts/fetch_plantuml_jar.sh
+          bash scripts/build_jre.sh
+          bash scripts/pyinstaller/build.sh
+
+      - name: Build assets + PyInstaller (Linux, inside ${{ matrix.container }})
+        if: runner.os == 'Linux'
+        run: |
+          set -e
+          docker run --rm \
+            -e PYI_PLAT_TAG \
+            -v "$PWD:/work" -w /work \
+            "$BUILD_CONTAINER" \
+            sh -ec '
+              if command -v apk >/dev/null 2>&1; then
+                apk add --no-cache bash zip openjdk17 fontconfig freetype \
+                  libpng expat libuuid zlib brotli-libs which findutils binutils
+              else
+                apt-get update -qq
+                apt-get install -y --no-install-recommends \
+                  zip binutils openjdk-17-jdk-headless \
+                  fontconfig libfreetype6 libpng16-16 libexpat1 libuuid1 \
+                  zlib1g libbrotli1
+              fi
+              JAVA_HOME_GUESS=$(dirname $(dirname $(readlink -f $(command -v javac))))
+              export JAVA_HOME="$JAVA_HOME_GUESS"
+              echo "JAVA_HOME=$JAVA_HOME"
+              pip install --no-cache-dir pyinstaller click
+              bash scripts/fetch_plantuml_jar.sh
+              bash scripts/build_jre.sh
+              bash scripts/stage_linux_runtime.sh
+              bash scripts/pyinstaller/build.sh
+            '
+
+      - name: List artifacts
+        shell: bash
+        run: ls -lh pyinstaller-dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-${{ matrix.label }}
+          path: |
+            pyinstaller-dist/plantuml-onefile-*
+            pyinstaller-dist/plantuml-onedir-*.zip
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # Stage 2: clean-env tests. Each Linux test pulls a base image with
+  # neither Python nor Java installed; macOS/Windows tests run on the
+  # bare runner with the artifact freshly downloaded.
+  # ------------------------------------------------------------------
+  test_clean_linux:
+    name: test (clean) / ${{ matrix.label }} on ${{ matrix.image }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'debian:12-slim'
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'ubuntu:22.04'
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'ubuntu:24.04'
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'debian:12-slim'
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'ubuntu:22.04'
+          - label: linux-x86_64-musl
+            os: ubuntu-22.04
+            image: 'alpine:3.19'
+          - label: linux-x86_64-musl
+            os: ubuntu-22.04
+            image: 'alpine:3.20'
+          - label: linux-aarch64-musl
+            os: ubuntu-22.04-arm
+            image: 'alpine:3.19'
+
+    env:
+      DOCKER_IMAGE: ${{ matrix.image }}
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-${{ matrix.label }}
+          path: dist
+
+      - name: List downloaded artifact
+        shell: bash
+        run: ls -lh dist/
+
+      - name: Selfcheck onefile in ${{ matrix.image }}
+        shell: bash
+        run: |
+          set -e
+          ONEFILE=$(ls dist/plantuml-onefile-* | head -1)
+          test -n "$ONEFILE" || { echo 'no onefile artifact'; exit 1; }
+          chmod +x "$ONEFILE"
+          BASENAME=$(basename "$ONEFILE")
+          docker run --rm -v "$PWD/dist:/dist:ro" -e BASENAME="$BASENAME" \
+            "$DOCKER_IMAGE" sh -ec '
+              command -v python3 >/dev/null 2>&1 && echo "warn: python3 present" || echo "ok: no python3"
+              command -v java >/dev/null 2>&1 && echo "warn: java present" || echo "ok: no java"
+              cp "/dist/$BASENAME" /tmp/plantuml
+              chmod +x /tmp/plantuml
+              /tmp/plantuml --help >/dev/null
+              /tmp/plantuml info
+              /tmp/plantuml selfcheck --no-color --no-env
+            '
+
+      - name: Selfcheck onedir.zip in ${{ matrix.image }}
+        shell: bash
+        run: |
+          set -e
+          ONEDIR_ZIP=$(ls dist/plantuml-onedir-*.zip | head -1)
+          test -n "$ONEDIR_ZIP" || { echo 'no onedir zip artifact'; exit 1; }
+          BASENAME=$(basename "$ONEDIR_ZIP")
+          docker run --rm -v "$PWD/dist:/dist:ro" -e BASENAME="$BASENAME" \
+            "$DOCKER_IMAGE" sh -ec '
+              if command -v apk >/dev/null 2>&1; then
+                apk add --no-cache unzip
+              else
+                apt-get update -qq && apt-get install -y -q --no-install-recommends unzip
+              fi
+              unzip -q "/dist/$BASENAME" -d /tmp
+              DIR=$(ls -d /tmp/plantuml-onedir-* | head -1)
+              chmod +x "$DIR/plantuml"
+              "$DIR/plantuml" --help >/dev/null
+              "$DIR/plantuml" selfcheck --no-color --no-env
+            '
+
+  test_clean_macos_x86:
+    name: test (clean) / macos-x86_64
+    needs: build
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-macos-x86_64
+          path: dist
+      - name: Selfcheck onefile
+        shell: bash
+        run: |
+          chmod +x dist/plantuml-onefile-macos-x86_64
+          ./dist/plantuml-onefile-macos-x86_64 --help >/dev/null
+          ./dist/plantuml-onefile-macos-x86_64 info
+          ./dist/plantuml-onefile-macos-x86_64 selfcheck --no-color --no-env
+      - name: Selfcheck onedir.zip
+        shell: bash
+        run: |
+          unzip -q dist/plantuml-onedir-macos-x86_64.zip -d extracted
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          chmod +x "$DIR/plantuml"
+          "$DIR/plantuml" selfcheck --no-color --no-env
+
+  test_clean_macos_arm64:
+    name: test (clean) / macos-arm64
+    needs: build
+    runs-on: macos-14
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-macos-arm64
+          path: dist
+      - name: Selfcheck onefile
+        shell: bash
+        run: |
+          chmod +x dist/plantuml-onefile-macos-arm64
+          ./dist/plantuml-onefile-macos-arm64 --help >/dev/null
+          ./dist/plantuml-onefile-macos-arm64 info
+          ./dist/plantuml-onefile-macos-arm64 selfcheck --no-color --no-env
+      - name: Selfcheck onedir.zip
+        shell: bash
+        run: |
+          unzip -q dist/plantuml-onedir-macos-arm64.zip -d extracted
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          chmod +x "$DIR/plantuml"
+          "$DIR/plantuml" selfcheck --no-color --no-env
+
+  test_clean_windows_x86:
+    name: test (clean) / windows-x86_64
+    needs: build
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-windows-x86_64
+          path: dist
+      - name: Selfcheck onefile
+        shell: bash
+        run: |
+          ls dist/
+          ./dist/plantuml-onefile-windows-x86_64.exe --help
+          ./dist/plantuml-onefile-windows-x86_64.exe info
+          ./dist/plantuml-onefile-windows-x86_64.exe selfcheck --no-color --no-env
+      - name: Selfcheck onedir.zip
+        shell: bash
+        run: |
+          unzip -q dist/plantuml-onedir-windows-x86_64.zip -d extracted
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          "$DIR/plantuml.exe" selfcheck --no-color --no-env
+
+  test_clean_windows_arm64:
+    name: test (clean) / windows-arm64
+    needs: build
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-windows-arm64
+          path: dist
+      - name: Selfcheck onefile
+        shell: bash
+        run: |
+          ./dist/plantuml-onefile-windows-arm64.exe --help
+          ./dist/plantuml-onefile-windows-arm64.exe info
+          ./dist/plantuml-onefile-windows-arm64.exe selfcheck --no-color --no-env
+      - name: Selfcheck onedir.zip
+        shell: bash
+        run: |
+          unzip -q dist/plantuml-onedir-windows-arm64.zip -d extracted
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          "$DIR/plantuml.exe" selfcheck --no-color --no-env

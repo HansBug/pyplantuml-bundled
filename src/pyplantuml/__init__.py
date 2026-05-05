@@ -11,6 +11,7 @@ from typing import Iterable, List, Optional, Sequence
 __all__ = [
     "JAR_PATH",
     "JAVA_BIN",
+    "PKG_DIR",
     "render",
     "check",
     "run",
@@ -18,10 +19,29 @@ __all__ = [
     "version",
 ]
 
-__version__ = "0.1.0"
+__version__ = "1.2024.7.post1"
 
-_PKG_DIR = Path(__file__).resolve().parent
-JAR_PATH: Path = _PKG_DIR / "plantuml.jar"
+
+def _resolve_pkg_dir() -> Path:
+    """
+    Where the bundled `plantuml.jar`, `jre/`, and `runtime/` actually live.
+
+    * In a normal `pip install` the package directory is the parent of
+      this file (`Path(__file__).resolve().parent`).
+    * In a PyInstaller frozen executable the layout is different:
+      `sys._MEIPASS` is the unpacked-resources root, and we put our
+      assets under `<_MEIPASS>/pyplantuml/` so the same relative paths
+      resolve identically.
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "pyplantuml"  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parent
+
+
+PKG_DIR: Path = _resolve_pkg_dir()
+_PKG_DIR = PKG_DIR  # internal alias for legacy code paths
+
+JAR_PATH: Path = PKG_DIR / "plantuml.jar"
 
 
 class PlantUmlError(RuntimeError):
@@ -47,7 +67,7 @@ def _platform_key() -> str:
 
 
 def _resolve_java_bin() -> Path:
-    jre_dir = _PKG_DIR / "jre"
+    jre_dir = PKG_DIR / "jre"
     exe = "java.exe" if os.name == "nt" else "java"
     candidate = jre_dir / "bin" / exe
     if candidate.exists():
@@ -69,24 +89,46 @@ def _java_bin() -> Path:
     return _resolve_java_bin()
 
 
-JAVA_BIN: Path = _PKG_DIR / "jre" / "bin" / ("java.exe" if os.name == "nt" else "java")
+JAVA_BIN: Path = PKG_DIR / "jre" / "bin" / ("java.exe" if os.name == "nt" else "java")
 
 
 def _cache_dir() -> Path:
-    """Per-user, writable directory for fontconfig cache. Stable across runs."""
-    base = (
-        os.environ.get("XDG_CACHE_HOME")
-        or (os.environ.get("LOCALAPPDATA") if os.name == "nt" else None)
-        or str(Path.home() / ".cache")
+    """Per-user, writable directory for fontconfig cache. Stable across runs.
+
+    Falls back through several candidates if the preferred one is not
+    writable (read-only $HOME, sandboxed exec, frozen exe in a snap, …)
+    so the launcher never crashes just because /home is a squashfs.
+    """
+    candidates: List[Path] = []
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        candidates.append(Path(xdg) / "pyplantuml" / "fontconfig")
+    if os.name == "nt":
+        local_app = os.environ.get("LOCALAPPDATA")
+        if local_app:
+            candidates.append(Path(local_app) / "pyplantuml" / "fontconfig")
+    home = os.environ.get("HOME") or str(Path.home())
+    candidates.append(Path(home) / ".cache" / "pyplantuml" / "fontconfig")
+    candidates.append(Path(tempfile.gettempdir()) / "pyplantuml-fontconfig")
+
+    for cand in candidates:
+        try:
+            cand.mkdir(parents=True, exist_ok=True)
+            probe = cand / ".write-probe"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            return cand
+        except OSError:
+            continue
+    raise PlantUmlError(
+        "no writable cache directory available; tried: "
+        + ", ".join(str(c) for c in candidates)
     )
-    cache = Path(base) / "pyplantuml" / "fontconfig"
-    cache.mkdir(parents=True, exist_ok=True)
-    return cache
 
 
 def _ensure_fonts_conf(font_dir: Path) -> Path:
     """Materialize fonts.conf with absolute paths into a stable cache location."""
-    template = (_PKG_DIR / "runtime" / "fonts.conf.template").read_text(encoding="utf-8")
+    template = (PKG_DIR / "runtime" / "fonts.conf.template").read_text(encoding="utf-8")
     cache = _cache_dir()
     rendered = template.replace("{FONT_DIR}", str(font_dir)).replace(
         "{CACHE_DIR}", str(cache)
@@ -111,22 +153,18 @@ def _build_env_and_java_args() -> tuple:
     ]
 
     plat = _platform_key()
-    runtime_dir = _PKG_DIR / "runtime" / plat
+    runtime_dir = PKG_DIR / "runtime" / plat
     if plat.startswith("linux") and runtime_dir.exists():
         lib_dir = runtime_dir / "lib"
         font_dir = runtime_dir / "fonts"
-        # Prepend our libfontconfig.so / freetype / etc. so the JRE finds them
         old = env.get("LD_LIBRARY_PATH", "")
         env["LD_LIBRARY_PATH"] = (
             f"{lib_dir}{':' + old if old else ''}"
         )
-        # Force fontconfig to read OUR config that points only at our fonts
         env["FONTCONFIG_FILE"] = str(_ensure_fonts_conf(font_dir))
         env["FONTCONFIG_PATH"] = str(font_dir)
-        # Tell AWT directly where to find TTFs (extra belt-and-suspenders)
         java_args.append(f"-Dsun.java2d.fontpath={font_dir}")
-        # Some JDK builds prefer this property name
-        java_args.append(f"-Dsun.font.fontconfig.disable=false")
+        java_args.append("-Dsun.font.fontconfig.disable=false")
 
     return env, java_args
 
@@ -147,11 +185,7 @@ def run(
 ) -> subprocess.CompletedProcess:
     """Invoke the bundled PlantUML jar with arbitrary CLI args."""
     auto_env, java_extra = _build_env_and_java_args()
-    if env is not None:
-        # caller-supplied env wins, but keep our LD_LIBRARY_PATH/FONTCONFIG_*
-        merged = {**auto_env, **env}
-    else:
-        merged = auto_env
+    merged = {**auto_env, **env} if env is not None else auto_env
     cmd = _build_cmd(args, java_extra)
     proc = subprocess.run(
         cmd,
@@ -199,6 +233,20 @@ def version() -> str:
 
 
 def _cli() -> int:
-    """Console entry point: pass-through to PlantUML CLI."""
-    proc = run(sys.argv[1:], check=False)
-    return proc.returncode
+    """Console entry point. Click is imported lazily so frozen exes that
+    omit the diagnostic sub-tree still start. Falls back to a hand-rolled
+    pass-through if Click cannot import for any reason."""
+    try:
+        import click  # noqa: F401
+    except Exception as exc:  # pragma: no cover - click is a hard dep, but the
+        # whole point of selfcheck is "never crash" — so if click is somehow
+        # unimportable on the user's machine we degrade to bare passthrough.
+        sys.stderr.write(
+            "warning: click failed to import ({!r}); "
+            "selfcheck unavailable, forwarding raw args to plantuml.jar.\n"
+            .format(exc)
+        )
+        proc = run(sys.argv[1:], check=False)
+        return proc.returncode
+    from . import _click_cli  # local import: build the click app on demand
+    return _click_cli.main()

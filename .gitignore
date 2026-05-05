@@ -25,3 +25,9 @@ venv/
 verify-out/
 .cibuildwheel/
 wheelhouse/
+
+# PyInstaller artefacts
+pyinstaller-build/
+pyinstaller-dist/
+*.spec.cache
+.venv-demo/
