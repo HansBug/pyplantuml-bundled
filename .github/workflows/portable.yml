@@ -40,12 +40,12 @@ jobs:
           - label: linux-x86_64-musl
             os: ubuntu-22.04
             plat_tag: linux-x86_64-musl
-            container: 'python:3.6-alpine3.10'      # Alpine 3.10, musl 1.1.22, 2019
+            container: 'python:3.6-alpine3.12'      # Alpine 3.12, musl 1.1.24, 2020
             build_python: '3.6'
           - label: linux-aarch64-musl
             os: ubuntu-22.04-arm
             plat_tag: linux-aarch64-musl
-            container: 'python:3.6-alpine3.10'
+            container: 'python:3.6-alpine3.12'
             build_python: '3.6'
           - label: macos-x86_64
             os: macos-15-intel
@@ -157,9 +157,18 @@ jobs:
                   fontconfig libfreetype6 libpng16-16 libexpat1 libuuid1 \
                   zlib1g libbrotli1
               fi
-              JAVA_HOME_GUESS=$(dirname $(dirname $(readlink -f $(command -v javac))))
-              export JAVA_HOME="$JAVA_HOME_GUESS"
+              # Distro-canonical JAVA_HOME (alpine has /usr/lib/jvm/default-jvm
+              # symlink; debian's /usr/lib/jvm/<jdk-suffix>/bin/javac is
+              # discoverable via 'which javac' which alpine busybox lacks
+              # but debian has).
+              if command -v apk >/dev/null 2>&1; then
+                export JAVA_HOME=/usr/lib/jvm/default-jvm
+                [ -x "$JAVA_HOME/bin/javac" ] || export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
+              else
+                export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which javac))))
+              fi
               echo "JAVA_HOME=$JAVA_HOME"
+              ls -la "$JAVA_HOME/bin/javac" "$JAVA_HOME/bin/jlink" 2>&1 || true
               PYI_PIN=$(python -c "import sys; v=sys.version_info[:2]; print(\"pyinstaller<5.6\" if v<(3,7) else (\"pyinstaller<6\" if v<(3,8) else \"pyinstaller\"))")
               CLICK_PIN=$(python -c "import sys; print(\"click<8\" if sys.version_info < (3, 7) else \"click\")")
               pip install --no-cache-dir "$PYI_PIN" "$CLICK_PIN"
