@@ -379,8 +379,13 @@ jobs:
           WHEEL=$(ls dist/*.whl | head -1)
           python -m venv .v
           source .v/bin/activate
-          pip install --quiet --upgrade pip
-          pip install --quiet "$WHEEL"
+          # Use 'python -m pip ...' rather than 'pip ...' for self-
+          # upgrades — Windows protects the venv's own pip.exe from
+          # being modified by itself, so plain 'pip install --upgrade
+          # pip' fails on windows-arm64.  'python -m pip' bypasses
+          # that since the running interpreter is not pip.exe.
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$WHEEL"
           plantuml info
           plantuml selfcheck --no-color --no-env
 
@@ -404,8 +409,13 @@ jobs:
           WHEEL=$(ls dist/*.whl | head -1)
           python -m venv .v
           source .v/bin/activate
-          pip install --quiet --upgrade pip
-          pip install --quiet "$WHEEL"
+          # Use 'python -m pip ...' rather than 'pip ...' for self-
+          # upgrades — Windows protects the venv's own pip.exe from
+          # being modified by itself, so plain 'pip install --upgrade
+          # pip' fails on windows-arm64.  'python -m pip' bypasses
+          # that since the running interpreter is not pip.exe.
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$WHEEL"
           plantuml info
           plantuml selfcheck --no-color --no-env
 
@@ -429,8 +439,13 @@ jobs:
           WHEEL=$(ls dist/*.whl | head -1)
           python -m venv .v
           source .v/Scripts/activate
-          pip install --quiet --upgrade pip
-          pip install --quiet "$WHEEL"
+          # Use 'python -m pip ...' rather than 'pip ...' for self-
+          # upgrades — Windows protects the venv's own pip.exe from
+          # being modified by itself, so plain 'pip install --upgrade
+          # pip' fails on windows-arm64.  'python -m pip' bypasses
+          # that since the running interpreter is not pip.exe.
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$WHEEL"
           plantuml info
           plantuml selfcheck --no-color --no-env
 
@@ -456,8 +471,13 @@ jobs:
           WHEEL=$(ls dist/*.whl | head -1)
           python -m venv .v
           source .v/Scripts/activate
-          pip install --quiet --upgrade pip
-          pip install --quiet "$WHEEL"
+          # Use 'python -m pip ...' rather than 'pip ...' for self-
+          # upgrades — Windows protects the venv's own pip.exe from
+          # being modified by itself, so plain 'pip install --upgrade
+          # pip' fails on windows-arm64.  'python -m pip' bypasses
+          # that since the running interpreter is not pip.exe.
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$WHEEL"
           plantuml info
           plantuml selfcheck --no-color --no-env
 
