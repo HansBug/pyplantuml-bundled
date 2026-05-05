@@ -122,7 +122,7 @@ jobs:
               else
                 apt-get update -qq
                 apt-get install -y --no-install-recommends \
-                  zip binutils openjdk-17-jdk-headless \
+                  zip binutils curl ca-certificates openjdk-17-jdk-headless \
                   fontconfig libfreetype6 libpng16-16 libexpat1 libuuid1 \
                   zlib1g libbrotli1
               fi
