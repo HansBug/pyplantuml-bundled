@@ -238,6 +238,35 @@ jobs:
           - label: linux-aarch64-manylinux
             os: ubuntu-22.04-arm
             image: 'python:3.6-slim-buster'      # py 3.6 on aarch64 buster
+          # Pre-2020 LTS Ubuntu coverage. The wheel ABI is
+          # manylinux_2_17 (glibc 2.17, CentOS 7 era), so even
+          # Ubuntu 18.04 (bionic, glibc 2.27, 2018) is well within
+          # the supported window — and a lot of legacy production
+          # boxes still run it.  Portable executables cannot share
+          # this matrix because their build container is Debian 10
+          # (glibc 2.28), which puts ubuntu:18.04 below the floor.
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'ubuntu:18.04'                # bionic, 2018, glibc 2.27
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'ubuntu:20.04'                # focal, 2020, glibc 2.31
+          - label: linux-aarch64-manylinux
+            os: ubuntu-22.04-arm
+            image: 'ubuntu:20.04'
+          # Red Hat family coverage (different package manager + libc
+          # build flavor from debian).  rockylinux:8 = EL8 = glibc 2.28;
+          # rockylinux:9 = EL9 = glibc 2.34; fedora is rolling.  All
+          # well above the manylinux_2_17 floor.
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'rockylinux:8'                # EL8, glibc 2.28
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'rockylinux:9'                # EL9, glibc 2.34
+          - label: linux-x86_64-manylinux
+            os: ubuntu-22.04
+            image: 'fedora:40'                   # Fedora 40, rolling
           # musl coverage
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
@@ -248,6 +277,9 @@ jobs:
           - label: linux-x86_64-musllinux
             os: ubuntu-22.04
             image: 'alpine:3.10'                 # Alpine 3.10 (2019, musl 1.1.22)
+          - label: linux-x86_64-musllinux
+            os: ubuntu-22.04
+            image: 'alpine:3.12'                 # Alpine 3.12 (2020, musllinux_1_1 floor)
           - label: linux-aarch64-musllinux
             os: ubuntu-22.04-arm
             image: 'alpine:3.20'
@@ -324,6 +356,23 @@ jobs:
             "$DOCKER_IMAGE" sh -ec '
               if command -v apk >/dev/null 2>&1; then
                 apk add --no-cache python3 py3-pip
+              elif command -v dnf >/dev/null 2>&1; then
+                # Rocky / Fedora — dnf default mirror selection is
+                # already a global CDN, no host-mirror rewrite needed.
+                dnf install -y --setopt=install_weak_deps=False \
+                  python3 python3-pip ca-certificates
+              elif command -v yum >/dev/null 2>&1; then
+                # CentOS 7 reaches yum but its repo is EOL'\''d to vault.
+                # Patch sources before any yum install can run.
+                if [ -d /etc/yum.repos.d ]; then
+                  for r in /etc/yum.repos.d/CentOS-*.repo; do
+                    [ -f "$r" ] && sed -i \
+                      -e "s|^mirrorlist=|#mirrorlist=|g" \
+                      -e "s|^#baseurl=http://mirror.centos.org/centos|baseurl=http://vault.centos.org|g" \
+                      "$r"
+                  done
+                fi
+                yum install -y python3 python3-pip ca-certificates
               else
                 # GitHub runners are ubuntu (so HOST_MIRROR is an ubuntu
                 # mirror — archive.ubuntu.com / ports.ubuntu.com / azure
