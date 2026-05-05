@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyplantuml-bundled"
+version = "1.2024.7.post1"
+description = "PlantUML with a bundled JRE and fonts — pip install and run, no system Java required"
+readme = "README.md"
+requires-python = ">=3.7"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "Hankson Bradley", email = "hansbug@buaa.edu.cn" }]
+keywords = ["plantuml", "uml", "diagram", "jre", "bundled"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Topic :: Documentation",
+  "Topic :: Software Development :: Documentation",
+  "Topic :: Multimedia :: Graphics",
+]
+
+[project.urls]
+Homepage = "https://github.com/HansBug/pyplantuml-bundled"
+Repository = "https://github.com/HansBug/pyplantuml-bundled"
+Issues = "https://github.com/HansBug/pyplantuml-bundled/issues"
+
+[project.scripts]
+plantuml = "pyplantuml:_cli"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pyplantuml = [
+  "plantuml.jar",
+  "jre/**/*",
+  "jre/**/.*",
+  "runtime/**/*",
+  "runtime/fonts.conf.template",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"

@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<!--
+  Generated at runtime by pyplantuml. {FONT_DIR} and {CACHE_DIR} are
+  substituted with absolute paths discovered from the installed package.
+-->
+<fontconfig>
+  <dir>{FONT_DIR}</dir>
+  <cachedir>{CACHE_DIR}</cachedir>
+
+  <alias>
+    <family>sans-serif</family>
+    <prefer>
+      <family>DejaVu Sans</family>
+      <family>WenQuanYi Micro Hei</family>
+    </prefer>
+  </alias>
+  <alias>
+    <family>serif</family>
+    <prefer>
+      <family>DejaVu Sans</family>
+      <family>WenQuanYi Micro Hei</family>
+    </prefer>
+  </alias>
+  <alias>
+    <family>monospace</family>
+    <prefer>
+      <family>DejaVu Sans Mono</family>
+      <family>WenQuanYi Micro Hei</family>
+    </prefer>
+  </alias>
+
+  <!-- Fall back to WenQuanYi Micro Hei for any CJK code points -->
+  <match target="pattern">
+    <test name="lang"><string>zh</string></test>
+    <edit name="family" mode="prepend"><string>WenQuanYi Micro Hei</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="lang"><string>ja</string></test>
+    <edit name="family" mode="prepend"><string>WenQuanYi Micro Hei</string></edit>
+  </match>
+  <match target="pattern">
+    <test name="lang"><string>ko</string></test>
+    <edit name="family" mode="prepend"><string>WenQuanYi Micro Hei</string></edit>
+  </match>
+</fontconfig>

@@ -1,0 +1,49 @@
+pyplantuml-bundled
+==================
+
+This wheel redistributes third-party binaries.  The project itself is
+licensed under GPL-3.0-or-later (see LICENSE), inherited from the
+upstream PlantUML licensing terms.  Each bundled binary keeps its own
+license; this NOTICE summarises them.
+
+1. PlantUML (plantuml.jar)
+   Copyright (C) Arnaud Roques and contributors
+   License: GPL-3.0-or-later
+   Source: https://github.com/plantuml/plantuml
+   Bundled subcomponents inside the jar (GPL-2.0-or-later compatible):
+     * JLaTeXMath  — GPL-2.0-or-later
+     * Eclipse ELK — EPL-2.0
+     * Checker Framework type-annotations — MIT
+   Their full notices live in plantuml.jar:META-INF/.
+
+2. Eclipse Temurin OpenJDK 17 (linked-out custom JRE built with jlink)
+   Copyright (C) Oracle and Eclipse Adoptium contributors
+   License: GPL-2.0 with Classpath Exception
+   Source: https://github.com/adoptium/temurin17-binaries
+   The Classpath Exception explicitly permits redistribution and linking
+   into otherwise-licensed applications.
+
+3. fontconfig + freetype + supporting libraries (Linux only)
+   * libfontconfig.so.1   — MIT-style ("fontconfig" license)
+   * libfreetype.so.6     — FreeType License (FTL) or GPL-2.0
+   * libpng16.so.16       — libpng License
+   * libexpat.so.1        — MIT
+   * libuuid.so.1         — BSD-3-Clause
+   * libz.so.1            — zlib License
+   * libbrotlidec.so.1, libbrotlicommon.so.1 — MIT
+
+4. DejaVu Sans / DejaVu Sans Bold (Linux fallback for Latin/Greek/Cyrillic)
+   Copyright (c) Bitstream, Inc., contributed by the DejaVu authors
+   License: Bitstream Vera Fonts License (free, redistribution allowed)
+   Source: https://dejavu-fonts.github.io/
+
+5. WenQuanYi Micro Hei (Linux fallback for CJK; one .ttc covers zh/ja/ko)
+   Copyright (c) Fang-Lin Huang and contributors
+   License: Apache-2.0 (with bundled GPL-3.0 fallback option in upstream)
+   We use it under the Apache-2.0 terms.
+   Source: http://wenq.org/wqy2/index.cgi?MicroHei
+
+The Linux runtime stack (item 3) is staged from the same manylinux /
+musllinux container that builds the wheel, so binaries match the wheel's
+ABI.  macOS and Windows wheels do not embed item 3+4+5 because
+CoreText / GDI bring CJK fonts of their own.

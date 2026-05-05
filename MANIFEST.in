@@ -1,0 +1,3 @@
+recursive-include src/pyplantuml/jre *
+recursive-include src/pyplantuml/runtime *
+recursive-include src/pyplantuml *.jar

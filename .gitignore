@@ -1,0 +1,27 @@
+# Bundled binaries — produced by scripts/, never committed.
+src/pyplantuml/plantuml.jar
+src/pyplantuml/jre/
+src/pyplantuml/runtime/linux-*/
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environments
+.venv*/
+venv/
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Local CI test outputs
+verify-out/
+.cibuildwheel/
+wheelhouse/
