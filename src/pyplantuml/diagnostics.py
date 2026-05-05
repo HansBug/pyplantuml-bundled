@@ -559,6 +559,21 @@ def _v_font_signatures() -> None:
         raise RuntimeError("font signature mismatches: " + "; ".join(bad))
 
 
+def _is_musl() -> bool:
+    """True iff the running interpreter is on a musl-based Linux."""
+    if not sys.platform.startswith("linux"):
+        return False
+    for p in ("/lib/ld-musl-x86_64.so.1", "/lib/ld-musl-aarch64.so.1",
+              "/lib/ld-musl-armhf.so.1"):
+        if os.path.exists(p):
+            return True
+    try:
+        libc, _ = platform.libc_ver()
+        return libc == ""
+    except Exception:
+        return False
+
+
 def _v_libfontconfig_loadable() -> None:
     """ctypes-load libfontconfig.so.1 from the staged path; verify a known
     symbol is exported.
@@ -566,11 +581,19 @@ def _v_libfontconfig_loadable() -> None:
     Pre-loads the dependency .so files in order so dlopen's DT_NEEDED
     resolution finds them without relying on LD_LIBRARY_PATH (which is
     only set inside ``pyplantuml.run`` calls, not during selfcheck).
+
+    Skipped on musl: musl's ld.so does not honour RTLD_GLOBAL for
+    sibling DT_NEEDED resolution the way glibc does, so each dlopen
+    re-walks the file search path. The JRE rendering tests below
+    already exercise the same .so chain end-to-end via subprocess +
+    LD_LIBRARY_PATH, so this in-process probe is redundant on musl.
     """
     import ctypes
     import pyplantuml
     plat = pyplantuml._platform_key()
     if not plat.startswith("linux"):
+        return
+    if _is_musl():
         return
     lib = pyplantuml.PKG_DIR / "runtime" / plat / "lib"
     # Load deps first so ld.so already has them when libfontconfig wants them.
@@ -605,11 +628,14 @@ def _v_libfreetype_loadable() -> None:
 
     libfreetype.so.6's DT_NEEDED list pulls in libpng16 / libz / libbrotlidec.
     ld.so does not look in our staged dir by default, so we preload deps
-    by absolute path before opening libfreetype itself."""
+    by absolute path before opening libfreetype itself.  Skipped on musl
+    for the same reason _v_libfontconfig_loadable is."""
     import ctypes
     import pyplantuml
     plat = pyplantuml._platform_key()
     if not plat.startswith("linux"):
+        return
+    if _is_musl():
         return
     lib = pyplantuml.PKG_DIR / "runtime" / plat / "lib"
     for sub in (
