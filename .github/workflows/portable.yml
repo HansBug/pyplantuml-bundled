@@ -157,10 +157,9 @@ jobs:
                   fontconfig libfreetype6 libpng16-16 libexpat1 libuuid1 \
                   zlib1g libbrotli1
               fi
-              # Distro-canonical JAVA_HOME (alpine has /usr/lib/jvm/default-jvm
-              # symlink; debian's /usr/lib/jvm/<jdk-suffix>/bin/javac is
-              # discoverable via 'which javac' which alpine busybox lacks
-              # but debian has).
+              # Distro-canonical JAVA_HOME. alpine has /usr/lib/jvm/default-jvm
+              # symlink; debian javac via readlink chain.  No comment apostrophes
+              # below — they would break the outer sh -ec single-quoted body.
               if command -v apk >/dev/null 2>&1; then
                 export JAVA_HOME=/usr/lib/jvm/default-jvm
                 [ -x "$JAVA_HOME/bin/javac" ] || export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
