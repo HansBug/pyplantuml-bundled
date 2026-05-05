@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build a minimal JRE with jlink for the current platform.
-# Requires JAVA_HOME pointing at a JDK >= 11 (we use 17 in CI).
+# Requires JAVA_HOME pointing at a JDK >= 11 (we use 11 in CI).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
