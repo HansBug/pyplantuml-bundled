@@ -14,10 +14,59 @@ Why a sub-command-with-passthrough rather than a single argv parser:
 - ``plantuml selfcheck`` should feel like a normal Click sub-command
   (``--help``, ``--no-color``, etc.).
 """
+import os
 import sys
 from typing import List
 
+# Provide UTF-8 hints for any subprocess we later spawn (java, ldd …)
+# before importing click.  Setting them here does not change the
+# *current* interpreter's filesystem encoding (that was frozen at
+# Python startup), so the click monkey-patch below is what protects
+# this process.  Setting them does, however, propagate to children.
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+if not os.environ.get("LC_ALL"):
+    os.environ["LC_ALL"] = "C.UTF-8"
+if not os.environ.get("LANG"):
+    os.environ["LANG"] = "C.UTF-8"
+
 import click
+
+
+def _neutralize_click_locale_check():
+    """Disable click 7.x's ``_unicodefun._verify_python3_env``.
+
+    On a 'clean' container (debian-slim / ubuntu / alpine without
+    ``LANG``) Python's filesystem encoding defaults to ASCII, and
+    click 7's check then refuses to run with::
+
+        RuntimeError: Click will abort further execution because
+        Python 3 was configured to use ASCII as encoding for the
+        environment.
+
+    Click 8.1.0 removed the check entirely (issue pallets/click#2198),
+    relying on PEP 538 / PEP 540 instead.  Replicate that behavior on
+    click 7 so our portable executables — whose entire selling point is
+    "works inside a scratch container" — do not fall over.
+
+    We must patch every module that imported the symbol by name; in
+    click 7 ``click/core.py`` does ``from ._unicodefun import
+    _verify_python3_env`` at import time and captures its own reference,
+    so patching ``click._unicodefun`` alone has no effect.
+    """
+    noop = lambda: None  # noqa: E731
+    for mod_name in ("click.core", "click._unicodefun"):
+        mod = sys.modules.get(mod_name)
+        if mod is None:
+            continue
+        for attr in ("_verify_python_env", "_verify_python3_env"):
+            if hasattr(mod, attr):
+                try:
+                    setattr(mod, attr, noop)
+                except Exception:
+                    pass
+
+
+_neutralize_click_locale_check()
 
 from . import __version__, run as _run, JAR_PATH, JAVA_BIN
 
