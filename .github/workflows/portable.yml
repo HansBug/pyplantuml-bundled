@@ -205,54 +205,92 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Listed oldest-to-newest within each family, mirroring the
+        # wheel-side test_clean_linux matrix.  Two distros that are
+        # in the wheel matrix are *not* repeated here:
+        #   ubuntu:18.04 — glibc 2.27, below portable's 2.28 floor
+        #     (portable build container is Debian 10 = glibc 2.28).
+        #   python:3.6-* — language-prebuilt image, not a system mirror.
+        # Everything else carries over.
         include:
+          # Debian (oldest → newest)
           - label: linux-x86_64-glibc
             os: ubuntu-22.04
-            image: 'debian:12-slim'
-          - label: linux-x86_64-glibc
-            os: ubuntu-22.04
-            image: 'ubuntu:22.04'
-          - label: linux-x86_64-glibc
-            os: ubuntu-22.04
-            image: 'ubuntu:24.04'
-          # 2019-era bare-OS coverage for portable exe.
-          # Build container is python:3.6-slim-buster (Debian 10,
-          # glibc 2.28, 2019) so the binary runs on anything glibc 2.28+.
-          # ubuntu:18.04 has glibc 2.27 — *just* below — so it is left
-          # out of the portable matrix; users on Ubuntu 18.04 should
-          # install via wheel where the bundled JRE binds against the
-          # cibuildwheel manylinux_2_28 baseline (also 2.28-bounded).
-          - label: linux-x86_64-glibc
-            os: ubuntu-22.04
-            image: 'debian:10-slim'        # Debian 10 buster (2019, glibc 2.28)
-          - label: linux-aarch64-glibc
-            os: ubuntu-22.04-arm
-            image: 'debian:12-slim'
-          - label: linux-aarch64-glibc
-            os: ubuntu-22.04-arm
-            image: 'ubuntu:22.04'
+            image: 'debian:10-slim'              # 2019, glibc 2.28
           - label: linux-aarch64-glibc
             os: ubuntu-22.04-arm
             image: 'debian:10-slim'
-          # alpine:3.19 EOL'd in Nov 2024 (musl 1.2.4 lacks pwritev2 that
-          # Python 3.10 from alpine:3.20+ relies on). Test from 3.20 up only.
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'debian:12-slim'              # 2023, glibc 2.36
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'debian:12-slim'
+          # Ubuntu (oldest → newest, no 18.04)
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'ubuntu:20.04'                # 2020, glibc 2.31
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'ubuntu:20.04'
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'ubuntu:22.04'                # 2022, glibc 2.35
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'ubuntu:22.04'
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'ubuntu:24.04'                # 2024, glibc 2.39
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'ubuntu:24.04'
+          # Red Hat (oldest → newest, both archs)
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'rockylinux:8'                # EL8, 2019, glibc 2.28
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'rockylinux:8'
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'rockylinux:9'                # EL9, 2022, glibc 2.34
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'rockylinux:9'
+          - label: linux-x86_64-glibc
+            os: ubuntu-22.04
+            image: 'fedora:40'                   # Fedora 40, 2024
+          - label: linux-aarch64-glibc
+            os: ubuntu-22.04-arm
+            image: 'fedora:40'
+          # Alpine / musl (oldest → newest)
           - label: linux-x86_64-musl
             os: ubuntu-22.04
-            image: 'alpine:3.20'
+            image: 'alpine:3.10'                 # 2019, musl 1.1.22
           - label: linux-x86_64-musl
             os: ubuntu-22.04
-            image: 'alpine:3.21'
+            image: 'alpine:3.12'                 # 2020, musl 1.1.24 (musllinux_1_1 floor)
           - label: linux-x86_64-musl
             os: ubuntu-22.04
-            image: 'alpine:3.10'           # Alpine 3.10 (2019, musl 1.1.22)
+            image: 'alpine:3.20'                 # 2024
           - label: linux-aarch64-musl
             os: ubuntu-22.04-arm
             image: 'alpine:3.20'
+          - label: linux-x86_64-musl
+            os: ubuntu-22.04
+            image: 'alpine:3.21'                 # 2024
+          - label: linux-aarch64-musl
+            os: ubuntu-22.04-arm
+            image: 'alpine:3.21'
 
     env:
       DOCKER_IMAGE: ${{ matrix.image }}
 
     steps:
+      # Need scripts/portable_smoketest.sh on the runner to mount it
+      # into the docker container during the external-smoketest step.
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: portable-${{ matrix.label }}
@@ -304,11 +342,102 @@ jobs:
               /tmp/plantuml-onedir/plantuml selfcheck --no-color --no-env
             '
 
+      # External-perspective smoketest: a fresh container, no python /
+      # java installed.  The portable binary is the only thing allowed
+      # to run.  Five black-box checks via portable_smoketest.sh:
+      # -version banner, -tpng PNG header, -tsvg structure,
+      # -checkonly exit code, CJK PNG byte size.
+      - name: External smoketest onefile in fresh ${{ matrix.image }} container
+        shell: bash
+        run: |
+          set -e
+          ONEFILE=$(ls dist/plantuml-onefile-* | head -1)
+          chmod +x "$ONEFILE"
+          BASENAME=$(basename "$ONEFILE")
+          docker run --rm \
+            -v "$PWD/dist:/dist:ro" \
+            -v "$PWD/scripts:/host-scripts:ro" \
+            -e BASENAME="$BASENAME" \
+            "$DOCKER_IMAGE" sh -ec '
+              cp "/dist/$BASENAME" /tmp/plantuml
+              chmod +x /tmp/plantuml
+              export PLANTUML=/tmp/plantuml
+              sh /host-scripts/portable_smoketest.sh
+            '
+
+      - name: External smoketest onedir.zip in fresh ${{ matrix.image }} container
+        shell: bash
+        run: |
+          set -e
+          # Reuse the host-side extracted dir from the selfcheck step.
+          INNER=$(ls -d extracted/plantuml-onedir-* | head -1)
+          docker run --rm \
+            -v "$PWD/$INNER:/opt/plantuml-onedir:ro" \
+            -v "$PWD/scripts:/host-scripts:ro" \
+            "$DOCKER_IMAGE" sh -ec '
+              cp -r /opt/plantuml-onedir /tmp/plantuml-onedir
+              chmod +x /tmp/plantuml-onedir/plantuml
+              export PLANTUML=/tmp/plantuml-onedir/plantuml
+              sh /host-scripts/portable_smoketest.sh
+            '
+
+      # Stage 2c — pytest of the portable binary.  This is the *only*
+      # stage where python and pytest are installed inside the test
+      # container; the binary itself is exercised via subprocess from
+      # tests_portable/ (no Python API is imported).
+      - name: Pytest onefile in fresh ${{ matrix.image }} container
+        shell: bash
+        run: |
+          set -e
+          ONEFILE=$(ls dist/plantuml-onefile-* | head -1)
+          chmod +x "$ONEFILE"
+          BASENAME=$(basename "$ONEFILE")
+          docker run --rm \
+            -v "$PWD/dist:/dist:ro" \
+            -v "$PWD/scripts:/host-scripts:ro" \
+            -v "$PWD/tests_portable:/tests_portable:ro" \
+            -e BASENAME="$BASENAME" \
+            "$DOCKER_IMAGE" sh -ec '
+              sh /host-scripts/stage2_install_python.sh
+              pip3 install --quiet --break-system-packages pytest 2>/dev/null \
+                || pip3 install --quiet pytest
+              cp /dist/$BASENAME /tmp/plantuml
+              chmod +x /tmp/plantuml
+              export PLANTUML=/tmp/plantuml
+              mkdir -p /work
+              cp -r /tests_portable /work/tests_portable
+              cd /work
+              python3 -m pytest tests_portable/ -v --tb=short --color=no
+            '
+
+      - name: Pytest onedir in fresh ${{ matrix.image }} container
+        shell: bash
+        run: |
+          set -e
+          INNER=$(ls -d extracted/plantuml-onedir-* | head -1)
+          docker run --rm \
+            -v "$PWD/$INNER:/opt/plantuml-onedir:ro" \
+            -v "$PWD/scripts:/host-scripts:ro" \
+            -v "$PWD/tests_portable:/tests_portable:ro" \
+            "$DOCKER_IMAGE" sh -ec '
+              sh /host-scripts/stage2_install_python.sh
+              pip3 install --quiet --break-system-packages pytest 2>/dev/null \
+                || pip3 install --quiet pytest
+              cp -r /opt/plantuml-onedir /tmp/plantuml-onedir
+              chmod +x /tmp/plantuml-onedir/plantuml
+              export PLANTUML=/tmp/plantuml-onedir/plantuml
+              mkdir -p /work
+              cp -r /tests_portable /work/tests_portable
+              cd /work
+              python3 -m pytest tests_portable/ -v --tb=short --color=no
+            '
+
   test_clean_macos_x86:
     name: test (clean) / macos-x86_64
     needs: build
     runs-on: macos-15-intel
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: portable-macos-x86_64
@@ -327,6 +456,33 @@ jobs:
           DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
           chmod +x "$DIR/plantuml"
           "$DIR/plantuml" selfcheck --no-color --no-env
+      - name: External smoketest onefile
+        shell: bash
+        run: |
+          PLANTUML="$PWD/dist/plantuml-onefile-macos-x86_64" \
+            sh scripts/portable_smoketest.sh
+      - name: External smoketest onedir
+        shell: bash
+        run: |
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          PLANTUML="$PWD/$DIR/plantuml" \
+            sh scripts/portable_smoketest.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Pytest onefile
+        shell: bash
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet pytest
+          PLANTUML="$PWD/dist/plantuml-onefile-macos-x86_64" \
+            python -m pytest tests_portable/ -v --tb=short --color=no
+      - name: Pytest onedir
+        shell: bash
+        run: |
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          PLANTUML="$PWD/$DIR/plantuml" \
+            python -m pytest tests_portable/ -v --tb=short --color=no
 
   # macos-arm64 portable test is omitted — see the build matrix comment for why.
 
@@ -335,6 +491,7 @@ jobs:
     needs: build
     runs-on: windows-2022
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: portable-windows-x86_64
@@ -352,12 +509,40 @@ jobs:
           unzip -q dist/plantuml-onedir-windows-x86_64.zip -d extracted
           DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
           "$DIR/plantuml.exe" selfcheck --no-color --no-env
+      - name: External smoketest onefile
+        shell: bash
+        run: |
+          PLANTUML="$PWD/dist/plantuml-onefile-windows-x86_64.exe" \
+            sh scripts/portable_smoketest.sh
+      - name: External smoketest onedir
+        shell: bash
+        run: |
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          PLANTUML="$PWD/$DIR/plantuml.exe" \
+            sh scripts/portable_smoketest.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Pytest onefile
+        shell: bash
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet pytest
+          PLANTUML="$PWD/dist/plantuml-onefile-windows-x86_64.exe" \
+            python -m pytest tests_portable/ -v --tb=short --color=no
+      - name: Pytest onedir
+        shell: bash
+        run: |
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          PLANTUML="$PWD/$DIR/plantuml.exe" \
+            python -m pytest tests_portable/ -v --tb=short --color=no
 
   test_clean_windows_arm64:
     name: test (clean) / windows-arm64
     needs: build
     runs-on: windows-11-arm
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: portable-windows-arm64
@@ -374,3 +559,32 @@ jobs:
           unzip -q dist/plantuml-onedir-windows-arm64.zip -d extracted
           DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
           "$DIR/plantuml.exe" selfcheck --no-color --no-env
+      - name: External smoketest onefile
+        shell: bash
+        run: |
+          PLANTUML="$PWD/dist/plantuml-onefile-windows-arm64.exe" \
+            sh scripts/portable_smoketest.sh
+      - name: External smoketest onedir
+        shell: bash
+        run: |
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          PLANTUML="$PWD/$DIR/plantuml.exe" \
+            sh scripts/portable_smoketest.sh
+      # Native arm64 Python is available from 3.11.  setup-python@v5
+      # honors that on windows-11-arm runners.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Pytest onefile
+        shell: bash
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet pytest
+          PLANTUML="$PWD/dist/plantuml-onefile-windows-arm64.exe" \
+            python -m pytest tests_portable/ -v --tb=short --color=no
+      - name: Pytest onedir
+        shell: bash
+        run: |
+          DIR=$(ls -d extracted/plantuml-onedir-* | head -1)
+          PLANTUML="$PWD/$DIR/plantuml.exe" \
+            python -m pytest tests_portable/ -v --tb=short --color=no

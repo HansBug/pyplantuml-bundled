@@ -336,9 +336,8 @@ jobs:
           MIRROR=${MIRROR:-}
           echo "DETECTED MIRROR=$MIRROR"
           echo "mirror=$MIRROR" >> "$GITHUB_OUTPUT"
-      # Stage 2a — selfcheck.  Uses the install helper to set up
-      # python3 + the wheel inside a clean container, then runs the
-      # built-in diagnostic battery.
+      # Stage 2a — selfcheck.  Fresh distro container, install python +
+      # the wheel, then run the built-in diagnostic battery.
       - name: Selfcheck wheel in ${{ matrix.image }}
         shell: bash
         env:
@@ -358,10 +357,32 @@ jobs:
               plantuml info
               plantuml selfcheck --no-color --no-env
             '
-      # Stage 2b — pytest, in a *fresh* container with the same image.
-      # The fresh container ensures the test pass does not inherit any
-      # cache / fontconfig state created during the selfcheck pass —
-      # tests must start from a clean slate.
+      # Stage 2b — external smoketest.  Fresh container with the same
+      # image; install python + wheel; then run the same shell-only
+      # smoketest portable uses.  The wheel's "plantuml" entry-point
+      # script is the binary under test from the smoketest's POV.
+      - name: External smoketest wheel in fresh ${{ matrix.image }} container
+        shell: bash
+        env:
+          HOST_MIRROR: ${{ steps.aptmirror.outputs.mirror }}
+        run: |
+          set -e
+          WHEEL=$(ls dist/*.whl | head -1)
+          BASENAME=$(basename "$WHEEL")
+          docker run --rm \
+            -v "$PWD/dist:/dist:ro" \
+            -v "$PWD/scripts:/host-scripts:ro" \
+            -e BASENAME="$BASENAME" \
+            -e HOST_MIRROR="$HOST_MIRROR" \
+            "$DOCKER_IMAGE" sh -ec '
+              sh /host-scripts/stage2_install_wheel.sh
+              PLANTUML=$(command -v plantuml)
+              export PLANTUML
+              sh /host-scripts/portable_smoketest.sh
+            '
+      # Stage 2c — pytest, in another fresh container.  Tests pass
+      # must start from a clean slate (no fontconfig cache, no /tmp
+      # leftovers from the prior stages).
       - name: Pytest wheel in fresh ${{ matrix.image }} container
         shell: bash
         env:
@@ -401,6 +422,7 @@ jobs:
     needs: build_wheels
     runs-on: macos-15-intel
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: wheel-macos-x86_64
@@ -425,12 +447,31 @@ jobs:
           python -m pip install --quiet "$WHEEL"
           plantuml info
           plantuml selfcheck --no-color --no-env
+      - name: External smoketest wheel
+        shell: bash
+        run: |
+          set -e
+          source .v/bin/activate
+          PLANTUML=$(command -v plantuml)
+          export PLANTUML
+          sh scripts/portable_smoketest.sh
+      - name: Pytest wheel in fresh venv
+        shell: bash
+        run: |
+          set -e
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv .v2
+          source .v2/bin/activate
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$WHEEL" pytest
+          python -m pytest tests/ -v --tb=short --color=no
 
   test_clean_macos_arm64:
     name: wheel test (clean) / macos-arm64
     needs: build_wheels
     runs-on: macos-14
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: wheel-macos-arm64
@@ -446,21 +487,35 @@ jobs:
           WHEEL=$(ls dist/*.whl | head -1)
           python -m venv .v
           source .v/bin/activate
-          # Use 'python -m pip ...' rather than 'pip ...' for self-
-          # upgrades — Windows protects the venv's own pip.exe from
-          # being modified by itself, so plain 'pip install --upgrade
-          # pip' fails on windows-arm64.  'python -m pip' bypasses
-          # that since the running interpreter is not pip.exe.
           python -m pip install --quiet --upgrade pip
           python -m pip install --quiet "$WHEEL"
           plantuml info
           plantuml selfcheck --no-color --no-env
+      - name: External smoketest wheel
+        shell: bash
+        run: |
+          set -e
+          source .v/bin/activate
+          PLANTUML=$(command -v plantuml)
+          export PLANTUML
+          sh scripts/portable_smoketest.sh
+      - name: Pytest wheel in fresh venv
+        shell: bash
+        run: |
+          set -e
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv .v2
+          source .v2/bin/activate
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$WHEEL" pytest
+          python -m pytest tests/ -v --tb=short --color=no
 
   test_clean_windows_x86_64:
     name: wheel test (clean) / windows-x86_64
     needs: build_wheels
     runs-on: windows-2022
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: wheel-windows-x86_64
@@ -476,21 +531,35 @@ jobs:
           WHEEL=$(ls dist/*.whl | head -1)
           python -m venv .v
           source .v/Scripts/activate
-          # Use 'python -m pip ...' rather than 'pip ...' for self-
-          # upgrades — Windows protects the venv's own pip.exe from
-          # being modified by itself, so plain 'pip install --upgrade
-          # pip' fails on windows-arm64.  'python -m pip' bypasses
-          # that since the running interpreter is not pip.exe.
           python -m pip install --quiet --upgrade pip
           python -m pip install --quiet "$WHEEL"
           plantuml info
           plantuml selfcheck --no-color --no-env
+      - name: External smoketest wheel
+        shell: bash
+        run: |
+          set -e
+          source .v/Scripts/activate
+          PLANTUML=$(command -v plantuml)
+          export PLANTUML
+          sh scripts/portable_smoketest.sh
+      - name: Pytest wheel in fresh venv
+        shell: bash
+        run: |
+          set -e
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv .v2
+          source .v2/Scripts/activate
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$WHEEL" pytest
+          python -m pytest tests/ -v --tb=short --color=no
 
   test_clean_windows_arm64:
     name: wheel test (clean) / windows-arm64
     needs: build_wheels
     runs-on: windows-11-arm
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: wheel-windows-arm64
@@ -517,6 +586,24 @@ jobs:
           python -m pip install --quiet "$WHEEL"
           plantuml info
           plantuml selfcheck --no-color --no-env
+      - name: External smoketest wheel
+        shell: bash
+        run: |
+          set -e
+          source .v/Scripts/activate
+          PLANTUML=$(command -v plantuml)
+          export PLANTUML
+          sh scripts/portable_smoketest.sh
+      - name: Pytest wheel in fresh venv
+        shell: bash
+        run: |
+          set -e
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv .v2
+          source .v2/Scripts/activate
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet "$WHEEL" pytest
+          python -m pytest tests/ -v --tb=short --color=no
 
   collect:
     name: Collect & list wheels
