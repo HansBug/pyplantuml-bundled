@@ -218,11 +218,17 @@ jobs:
           # Concatenate every apt source-listing format the runner might use.
           # Errors from missing files are swallowed; pipefail must not kill us.
           set +o pipefail
+          # GitHub ubuntu-22.04 x86_64 runners use the apt 'mirror+' protocol
+          # (deb mirror+file:/etc/apt/apt-mirrors.txt ...), so the actual
+          # URLs live in /etc/apt/apt-mirrors.txt rather than sources.list.
           ALL=$( { cat /etc/apt/sources.list 2>/dev/null; \
+                   cat /etc/apt/apt-mirrors.txt 2>/dev/null; \
                    cat /etc/apt/sources.list.d/*.sources 2>/dev/null; \
                    cat /etc/apt/sources.list.d/*.list 2>/dev/null; } )
           echo '--- /etc/apt/sources.list ---'
           cat /etc/apt/sources.list 2>/dev/null | grep -vE '^\s*(#|$)' || true
+          echo '--- /etc/apt/apt-mirrors.txt ---'
+          cat /etc/apt/apt-mirrors.txt 2>/dev/null || true
           echo '--- /etc/apt/sources.list.d/ ---'
           ls -1 /etc/apt/sources.list.d/ 2>/dev/null || true
           for f in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
