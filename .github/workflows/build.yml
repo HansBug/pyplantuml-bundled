@@ -353,9 +353,123 @@ jobs:
               plantuml selfcheck --no-color --no-env
             '
 
+  # macOS / Windows clean-env tests — no docker (those runners cannot host
+  # Linux containers) so "clean" here means "fresh venv on the runner".
+  # The runner has system python and system java, but the wheel uses its
+  # bundled JRE and is installed into an isolated venv, so neither leaks
+  # into selfcheck.  Each job runs on the same runner OS as the matching
+  # build_wheels matrix entry, so we cover the full set of artifact tags.
+  test_clean_macos_x86_64:
+    name: wheel test (clean) / macos-x86_64
+    needs: build_wheels
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-macos-x86_64
+          path: dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install wheel + selfcheck
+        shell: bash
+        run: |
+          set -e
+          ls -lh dist/
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv .v
+          source .v/bin/activate
+          pip install --quiet --upgrade pip
+          pip install --quiet "$WHEEL"
+          plantuml info
+          plantuml selfcheck --no-color --no-env
+
+  test_clean_macos_arm64:
+    name: wheel test (clean) / macos-arm64
+    needs: build_wheels
+    runs-on: macos-14
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-macos-arm64
+          path: dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install wheel + selfcheck
+        shell: bash
+        run: |
+          set -e
+          ls -lh dist/
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv .v
+          source .v/bin/activate
+          pip install --quiet --upgrade pip
+          pip install --quiet "$WHEEL"
+          plantuml info
+          plantuml selfcheck --no-color --no-env
+
+  test_clean_windows_x86_64:
+    name: wheel test (clean) / windows-x86_64
+    needs: build_wheels
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-windows-x86_64
+          path: dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install wheel + selfcheck
+        shell: bash
+        run: |
+          set -e
+          ls -lh dist/
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv .v
+          source .v/Scripts/activate
+          pip install --quiet --upgrade pip
+          pip install --quiet "$WHEEL"
+          plantuml info
+          plantuml selfcheck --no-color --no-env
+
+  test_clean_windows_arm64:
+    name: wheel test (clean) / windows-arm64
+    needs: build_wheels
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheel-windows-arm64
+          path: dist
+      # Native arm64 Python builds are available from 3.11 onward;
+      # actions/setup-python@v5 honors that.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install wheel + selfcheck
+        shell: bash
+        run: |
+          set -e
+          ls -lh dist/
+          WHEEL=$(ls dist/*.whl | head -1)
+          python -m venv .v
+          source .v/Scripts/activate
+          pip install --quiet --upgrade pip
+          pip install --quiet "$WHEEL"
+          plantuml info
+          plantuml selfcheck --no-color --no-env
+
   collect:
     name: Collect & list wheels
-    needs: [build_wheels, test_clean_linux]
+    needs:
+      - build_wheels
+      - test_clean_linux
+      - test_clean_macos_x86_64
+      - test_clean_macos_arm64
+      - test_clean_windows_x86_64
+      - test_clean_windows_arm64
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/download-artifact@v4

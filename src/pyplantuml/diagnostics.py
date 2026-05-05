@@ -714,84 +714,22 @@ def _v_libfreetype_chain() -> None:
         )
 
 
-def _v_libfontconfig_loadable() -> None:
-    """
-    In-process ctypes load of libfontconfig.so.1 + FcInit() != 0.
-    glibc-only because musl's ld.so does not satisfy DT_NEEDED via
-    RTLD_GLOBAL preloads — the chain check above is the authoritative
-    verifier on musl.
-    """
-    import ctypes
-    import pyplantuml
-    plat = pyplantuml._platform_key()
-    if not plat.startswith("linux"):
-        return
-    if _is_musl():
-        return
-    lib = pyplantuml.PKG_DIR / "runtime" / plat / "lib"
-    for sub in (
-        "libbrotlicommon.so.1", "libbrotlidec.so.1",
-        "libpng16.so.16", "libexpat.so.1",
-        "libuuid.so.1", "libz.so.1",
-        "libfreetype.so.6",
-    ):
-        p = lib / sub
-        if p.is_file():
-            try:
-                ctypes.CDLL(str(p), mode=ctypes.RTLD_GLOBAL)
-            except OSError as exc:
-                raise RuntimeError(
-                    "Failed to dlopen dependency {}: {}".format(sub, exc)
-                ) from exc
-    handle = ctypes.CDLL(str(lib / "libfontconfig.so.1"))
-    init_fn = getattr(handle, "FcInit", None)
-    if init_fn is None:
-        raise RuntimeError(
-            "libfontconfig.so.1 loaded but FcInit symbol not found — "
-            "the .so may have been stripped beyond what we expect."
-        )
-    init_fn.restype = ctypes.c_int
-    if init_fn() == 0:
-        raise RuntimeError("FcInit() returned 0 (failure).")
-
-
-def _v_libfreetype_loadable() -> None:
-    """
-    In-process ctypes load of libfreetype.so.6 + FT_Init_FreeType().
-    glibc-only for the same reason _v_libfontconfig_loadable is.
-    """
-    import ctypes
-    import pyplantuml
-    plat = pyplantuml._platform_key()
-    if not plat.startswith("linux"):
-        return
-    if _is_musl():
-        return
-    lib = pyplantuml.PKG_DIR / "runtime" / plat / "lib"
-    for sub in (
-        "libbrotlicommon.so.1", "libbrotlidec.so.1",
-        "libpng16.so.16", "libz.so.1",
-    ):
-        p = lib / sub
-        if p.is_file():
-            try:
-                ctypes.CDLL(str(p), mode=ctypes.RTLD_GLOBAL)
-            except OSError as exc:
-                raise RuntimeError(
-                    "Failed to dlopen freetype dependency {}: {}".format(sub, exc)
-                ) from exc
-    handle = ctypes.CDLL(str(lib / "libfreetype.so.6"))
-    init_fn = getattr(handle, "FT_Init_FreeType", None)
-    if init_fn is None:
-        raise RuntimeError(
-            "libfreetype.so.6 loaded but FT_Init_FreeType not found."
-        )
-    init_fn.restype = ctypes.c_int
-    init_fn.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
-    library_ptr = ctypes.c_void_p()
-    rc = init_fn(ctypes.byref(library_ptr))
-    if rc != 0:
-        raise RuntimeError("FT_Init_FreeType returned {} (non-zero = error).".format(rc))
+# NOTE: in-process ctypes.CDLL probes (formerly _v_libfontconfig_loadable
+# and _v_libfreetype_loadable) used to live here.  They tested an
+# implementation detail — whether the *Python* interpreter, with its
+# already-frozen LD_LIBRARY_PATH, could dlopen our staged libfontconfig
+# and libfreetype plus walk the dep chain via RTLD_GLOBAL preloads.
+# That is not how the product is actually used: PlantUML rendering goes
+# through a java subprocess that loads its own libfontmanager →
+# libharfbuzz → libfreetype chain via its own LD_LIBRARY_PATH (which we
+# set explicitly when spawning java).  The ctypes probes were also
+# SONAME-fragile (manylinux2014 ships libpng15 / libpcre.so.1, debian
+# ships libpng16 / libpcre.so.3) and produced false positives in
+# stage-2 testing.  The functional render-check cases below
+# (render_png, render_svg, cjk_png_size, render_offline, ...) are the
+# authoritative verifier for "libfontconfig + libfreetype actually
+# work in production": if the staged chain is broken in any way, those
+# cases cannot pass.
 
 
 def _v_dep_click() -> None:
@@ -1059,19 +997,17 @@ def _build_groups() -> List[Tuple[str, List[Case]]]:
                  _v_libfreetype_chain,
                  "A DT_NEEDED of libfreetype.so.6 cannot be resolved; "
                  "stage_linux_runtime.sh missed a dep."),
-            # In-process ctypes probes — glibc only because musl's ld.so
-            # does not satisfy DT_NEEDED via RTLD_GLOBAL preloads.  The
-            # chain tests above are the authoritative musl coverage.
-            Case("libfontconfig_loadable",
-                 "ctypes.CDLL(libfontconfig.so.1) + FcInit() returns success (glibc)",
-                 _v_libfontconfig_loadable,
-                 "libfontconfig.so.1 staged but unloadable — likely an ABI "
-                 "mismatch; rebuild inside the matching manylinux container."),
-            Case("libfreetype_loadable",
-                 "ctypes.CDLL(libfreetype.so.6) + FT_Init_FreeType returns 0 (glibc)",
-                 _v_libfreetype_loadable,
-                 "libfreetype.so.6 staged but unloadable — same ABI mismatch "
-                 "diagnosis as libfontconfig."),
+            # NOTE: in-process ctypes.CDLL probes used to live here, but
+            # they tested an implementation detail (can the *Python*
+            # interpreter dlopen our staged .so chain) that does not
+            # match how the product is actually used (java subprocess
+            # loads its own libfontmanager → harfbuzz → libfreetype
+            # chain via its own LD_LIBRARY_PATH).  They were also
+            # SONAME-fragile and produced false positives on stage-2
+            # runs.  The render checks below are the authoritative
+            # functional verifier — if libfontconfig / libfreetype are
+            # really broken, render_png / render_svg / cjk_png_size
+            # cannot pass.
         ]),
         ("Bundled font assets (Linux)", [
             Case("font_signatures",
