@@ -177,7 +177,9 @@ proc = subprocess.Popen(
 
 ## Portable executables (no Python required)
 
-Beyond the wheel, every release also ships a self-contained PyInstaller-built `plantuml` binary for every `(OS, arch, libc)` slot. These embed Python + PlantUML jar + JRE + (Linux only) the fontconfig stack, so you can drop them on a machine that has neither Python nor Java installed and they Just Work. Two flavours per platform — single self-extracting binary (`plantuml-onefile-<plat>`) and a directory archive (`plantuml-onedir-<plat>.zip`) — downloadable from the [GitHub release page](https://github.com/HansBug/pyplantuml-bundled/releases).
+Beyond the wheel, every release also ships a self-contained PyInstaller-built `plantuml` binary for every supported `(OS, arch, libc)` slot. These embed Python + PlantUML jar + JRE + (Linux only) the fontconfig stack, so you can drop them on a machine that has neither Python nor Java installed and they Just Work. Two flavours per platform — single self-extracting binary (`plantuml-onefile-<plat>`) and a directory archive (`plantuml-onedir-<plat>.zip`) — downloadable from the [GitHub release page](https://github.com/HansBug/pyplantuml-bundled/releases).
+
+> **macOS Apple Silicon caveat**: a portable executable for macos-arm64 is *not* shipped. Apple Silicon's hardened-runtime requires the bundled OpenJDK to hold the `com.apple.security.cs.allow-jit` entitlement, which is only honoured by binaries signed with a paid Developer-ID identity. Ad-hoc-signed binaries (the only option for an OSS project) crash with `SIGSEGV` at `pc=0x0` during JVM init regardless of every workaround we tried (`-Xint`, removing `--options runtime`, embedding the entitlement at build time, etc.). The wheel works fine on macos-arm64 — install with `pip install pyplantuml-bundled`.
 
 ```bash
 curl -LO https://github.com/HansBug/pyplantuml-bundled/releases/latest/download/plantuml-onefile-linux-x86_64-glibc
