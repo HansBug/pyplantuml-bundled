@@ -16,6 +16,7 @@ __all__ = [
     "check",
     "run",
     "PlantUmlError",
+    "PlantUmlSyntaxError",
     "version",
     "Session",
     "Diagnostic",
@@ -58,6 +59,51 @@ JAR_PATH: Path = PKG_DIR / "plantuml.jar"
 
 class PlantUmlError(RuntimeError):
     """Raised when the embedded PlantUML invocation fails."""
+
+
+class PlantUmlSyntaxError(PlantUmlError):
+    """Raised when plantuml reports a syntax error and the caller asked
+    for strict mode (e.g. ``render_text(..., strict=True)``).
+
+    ``str(self)`` returns the full diagnostic block plantuml emitted in
+    its ``-ttxt`` mode — line number header, the source line, a caret
+    pointer to the offending token, and the error description.  That
+    text is the canonical thing to forward to a human or LLM that's
+    trying to fix the puml.
+
+    The structured fields below mirror the same content for callers
+    that prefer to act on it programmatically:
+
+      - ``line``        : 1-based line number where plantuml flagged
+                          the problem (``None`` if the diagnostic
+                          format omitted it).
+      - ``column``      : 1-based column of the caret (``^^^^^``).
+      - ``snippet``     : the exact source line that was flagged
+                          (with trailing whitespace stripped).
+      - ``description`` : the bare error description, e.g.
+                          ``"Syntax Error?"`` or with newer plantuml
+                          ``"Syntax Error? (Assumed diagram type: sequence)"``.
+      - ``returncode``  : plantuml exit code (typically 200).
+
+    Inherits from :class:`PlantUmlError` so existing ``except
+    PlantUmlError`` handlers keep working.
+    """
+
+    def __init__(
+        self,
+        message,
+        line=None,
+        column=None,
+        snippet=None,
+        description=None,
+        returncode=None,
+    ):
+        super().__init__(message)
+        self.line = line
+        self.column = column
+        self.snippet = snippet
+        self.description = description
+        self.returncode = returncode
 
 
 def _platform_key() -> str:

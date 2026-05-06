@@ -1,20 +1,41 @@
-"""Structured lint diagnostics for puml sources.
+"""Structured lint diagnostics + plantuml ``-ttxt`` parsing.
 
-PlantUML's ``-checkonly`` is a binary pass/fail check: the CLI does not
-expose per-line error info.  When a source has errors, :func:`lint`
-returns a single :class:`Diagnostic` whose ``message`` field carries
-plantuml's raw stderr text; ``line`` and ``column`` are always ``None``.
-Future plantuml versions may provide structured output, at which point
-this layer can populate them without breaking the API shape.
+PlantUML emits a rich, human-readable diagnostic block in its
+``-pipe -ttxt`` mode whenever a source has a syntax error::
+
+    [From string (line 2) ]
+
+    @startuml
+    A --bogus-> B
+    ^^^^^
+     Syntax Error?
+
+This format is **stable across all plantuml versions we tested**
+(1.2020.7 through 1.2026.2 + ``latest``).  Newer versions append
+extra context (e.g. ``" (Assumed diagram type: sequence)"``) which
+this parser preserves verbatim in the ``description`` field.
+
+The parser returns ``None`` when the input doesn't look like an
+error block (e.g., a successfully rendered ASCII-art diagram), so
+callers can use it as a "is this an error?" detector too.
 """
 import os
+import re
+import subprocess
 import tempfile
 from pathlib import Path
 
-from . import PlantUmlError
+from . import (
+    JAR_PATH,
+    PlantUmlError,
+    _build_env_and_java_args,
+    _java_bin,
+)
 from . import run as _run
 from .diagnostics import _dataclass_like
 
+
+# --- Diagnostic ----------------------------------------------------------
 
 @_dataclass_like
 class Diagnostic(object):
@@ -25,41 +46,169 @@ class Diagnostic(object):
     level : str
         Currently always ``"error"``.
     line : int | None
-        Always ``None`` until plantuml exposes line info.
+        1-based line number plantuml flagged (parsed from the
+        ``-ttxt`` ``[From string (line N) ]`` header).
     column : int | None
-        Always ``None`` until plantuml exposes column info.
+        1-based column of the caret pointer (``^^^^^``).
     message : str
-        plantuml's raw stderr text, or a synthetic explanation if
-        plantuml exited non-zero with empty stderr.
+        The full plantuml-emitted diagnostic block — what you'd
+        want to show a human or pass to an LLM.
     snippet : str | None
-        Reserved for future use; always ``None`` for now.
+        The exact source line that was flagged (one line above the
+        caret in the diagnostic block).
+    description : str | None
+        The bare error description on its own line — typically
+        ``"Syntax Error?"``.  Newer plantuml versions append extra
+        context such as ``"Syntax Error? (Assumed diagram type:
+        sequence)"`` which is preserved verbatim.
     """
-    __fields__ = ("level", "line", "column", "message", "snippet")
+    __fields__ = (
+        "level", "line", "column", "message", "snippet", "description",
+    )
 
-    def __init__(self, level, line=None, column=None, message="", snippet=None):
+    def __init__(
+        self,
+        level,
+        line=None,
+        column=None,
+        message="",
+        snippet=None,
+        description=None,
+    ):
         self.level = level
         self.line = line
         self.column = column
         self.message = message
         self.snippet = snippet
+        self.description = description
 
+
+# --- diagnostic parsing --------------------------------------------------
+
+# `^` carets followed only by `^` and whitespace; rstrip handles plantuml's
+# fixed-width padding on each output line.
+_CARET_RE = re.compile(r"^\s*\^+\s*$")
+# `[From string (line 2) ]` or  `[From file: /path (line 2) ]`
+_HEADER_LINE_RE = re.compile(r"\(line\s+(\d+)\s*\)")
+
+
+def _parse_ttxt_diagnostic(text):
+    """Parse plantuml ``-ttxt`` output into a structured diagnostic dict.
+
+    Returns ``None`` when ``text`` doesn't look like an error block —
+    handy as a boolean "is this an error?" check.
+
+    Returns a dict with keys:
+        ``line``        -- int | None
+        ``column``      -- int | None  (1-based caret position)
+        ``snippet``     -- str | None  (the flagged source line)
+        ``description`` -- str | None
+        ``raw``         -- str         (the full block, stripped of
+                                        plantuml's fixed-width padding)
+    """
+    if not text:
+        return None
+    # Quick filter: every error block plantuml emits since 1.2020 has
+    # both the header marker and a caret line.  Avoid a deep parse
+    # of the multi-line ASCII-art that's emitted for valid sources.
+    if "[From " not in text:
+        return None
+
+    raw_lines = text.splitlines()
+    # Strip plantuml's per-line trailing padding so column-counting
+    # (which uses the caret line's leading whitespace) is based on
+    # printable characters.
+    stripped = [line.rstrip() for line in raw_lines]
+    raw = "\n".join(stripped).rstrip("\n")
+
+    # Header line — extract line number.
+    line_num = None
+    for L in stripped:
+        m = _HEADER_LINE_RE.search(L)
+        if m:
+            line_num = int(m.group(1))
+            break
+
+    # Caret line — find row of `^^^^^`.
+    caret_idx = None
+    for i, L in enumerate(stripped):
+        if L and _CARET_RE.match(L):
+            caret_idx = i
+            break
+
+    column = snippet = description = None
+    if caret_idx is not None:
+        caret_line = stripped[caret_idx]
+        # 1-based column where the carets start.  Use the original
+        # (un-stripped) source row for a faithful column count, since
+        # leading whitespace there is what plantuml actually pointed to.
+        original_caret = raw_lines[caret_idx]
+        leading_ws = len(original_caret) - len(original_caret.lstrip(" \t"))
+        column = leading_ws + 1
+        if caret_idx > 0:
+            snippet = stripped[caret_idx - 1].rstrip() or None
+        if caret_idx + 1 < len(stripped):
+            description = stripped[caret_idx + 1].strip() or None
+
+    return {
+        "line": line_num,
+        "column": column,
+        "snippet": snippet,
+        "description": description,
+        "raw": raw,
+    }
+
+
+def _run_pipe_ttxt(source):
+    """Run ``plantuml -pipe -ttxt`` on ``source`` (str), capture stdout.
+
+    Used by :func:`lint_text` and the strict modes of :func:`render_text`
+    / :func:`render_bytes`.  Returns the stdout text (which is either
+    the rendered ASCII-art diagram or — for invalid sources — the
+    diagnostic block).
+    """
+    if not isinstance(source, str):
+        raise PlantUmlError(
+            "_run_pipe_ttxt expects str, got {}".format(type(source).__name__)
+        )
+    auto_env, java_extra = _build_env_and_java_args()
+    cmd = [str(_java_bin())]
+    cmd.extend(java_extra)
+    cmd.extend(["-jar", str(JAR_PATH), "-pipe", "-ttxt"])
+    proc = subprocess.run(
+        cmd,
+        input=source.encode("utf-8"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=auto_env,
+    )
+    return proc.stdout.decode("utf-8", errors="replace")
+
+
+# --- public API ----------------------------------------------------------
 
 def lint(source_path):
-    """Lint a .puml file path; return a list of Diagnostics.
+    """Lint a .puml file path; return a list of :class:`Diagnostic`.
 
     Empty list = source is valid (or plantuml's lenient parser
     accepted it; missing ``@enduml`` and undefined aliases pass).
+
+    Bad sources yield a single Diagnostic whose ``message`` is the
+    plantuml ``-ttxt`` diagnostic block (with line/column/snippet/
+    description also populated).
 
     Raises :class:`PlantUmlError` if the file does not exist.
     """
     src = Path(source_path)
     if not src.exists():
         raise PlantUmlError("source not found: {}".format(src))
+    # Fast pre-flight via -checkonly: avoids a full -ttxt render for
+    # valid sources (the common case).
     proc = _run(["-checkonly", str(src)], capture_output=True, check=False)
-    return _parse_diagnostics(
-        proc.returncode,
-        proc.stderr if proc.stderr is not None else "",
-    )
+    if proc.returncode == 0:
+        return []
+    # Source is invalid — re-run via -ttxt to get the structured block.
+    return _diagnostics_via_ttxt(src.read_text(encoding="utf-8"), proc.returncode)
 
 
 def lint_text(source):
@@ -80,58 +229,36 @@ def lint_text(source):
             pass
 
 
-def _strip_known_noise(stderr_text):
-    """Drop stderr lines that are NOT plantuml syntax errors.
+def _diagnostics_via_ttxt(source_text, returncode):
+    """Run -ttxt against ``source_text`` and parse the diagnostic.
 
-    Linux carries the bundled libfontconfig schema warning ("unknown
-    element 'reset-dirs'") that the launcher otherwise routes through
-    `2>/dev/null` for the CLI; openjdk has emitted "illegal reflective
-    access" deprecation warnings in past versions.  None of these
-    indicate a problem with the puml source, so we filter them out
-    before deciding what to report.
+    Always returns a list with at least one Diagnostic — falling back
+    to a synthetic one if -ttxt didn't yield a parseable block (e.g.
+    the source had an error -checkonly caught but -ttxt rendered
+    around).
     """
-    drop_prefixes = (
-        "Fontconfig warning",
-        "Fontconfig error",
-        "WARNING: An illegal reflective access",
-        "WARNING: Please consider reporting",
-        "WARNING: Use --illegal-access",
-        "WARNING: All illegal access operations",
-    )
-    keep = []
-    for line in stderr_text.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if any(stripped.startswith(p) for p in drop_prefixes):
-            continue
-        keep.append(stripped)
-    return "\n".join(keep)
-
-
-def _parse_diagnostics(returncode, stderr_text):
-    """Translate (returncode, stderr_text) into a Diagnostic list.
-
-    Returncode is the authoritative pass/fail signal — plantuml's
-    -checkonly returns 0 for valid input and a non-zero code (typically
-    200) for syntax errors.  Stderr noise (fontconfig warnings, JVM
-    deprecation messages) is filtered out so we don't report false
-    positives.
-
-    Plain function so tests can exercise the parsing logic without
-    spawning a JVM.
-    """
-    if returncode == 0:
-        return []
-    msg = _strip_known_noise(stderr_text).strip()
-    if not msg:
-        msg = "syntax error (PlantUML exited with code {})".format(returncode)
+    text = _run_pipe_ttxt(source_text)
+    info = _parse_ttxt_diagnostic(text)
+    if info is None:
+        # -checkonly said error but -ttxt didn't surface a block.
+        # Fall back to a flat Diagnostic with whatever text we have.
+        msg = (text.strip() or
+               "syntax error (PlantUML exited with code {})".format(returncode))
+        return [
+            Diagnostic(
+                level="error",
+                line=None, column=None,
+                message=msg,
+                snippet=None, description=None,
+            )
+        ]
     return [
         Diagnostic(
             level="error",
-            line=None,
-            column=None,
-            message=msg,
-            snippet=None,
+            line=info["line"],
+            column=info["column"],
+            message=info["raw"],
+            snippet=info["snippet"],
+            description=info["description"],
         )
     ]
