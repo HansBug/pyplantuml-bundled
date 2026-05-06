@@ -660,16 +660,13 @@ jobs:
   #
   # Two destinations:
   #   1. PyPI — via the official pypa/gh-action-pypi-publish action,
-  #      authenticated via OIDC trusted publisher (NO API token in
-  #      secrets).  This requires a one-time setup on PyPI:
-  #        Project settings → Publishing → Add a new pending publisher
-  #          PyPI project name: pyplantuml-bundled
-  #          Owner:             HansBug
-  #          Repository:        pyplantuml-bundled
-  #          Workflow filename: build.yml
-  #          Environment:       pypi
-  #      The `environment: pypi` on this job matches that config so
-  #      OIDC works.
+  #      authenticated with a PyPI API token kept as the
+  #      `PYPI_PASSWORD` repo secret.  Generate the token under
+  #        https://pypi.org/manage/account/token/
+  #      scoped to the `pyplantuml-bundled` project (use a
+  #      project-scoped token after the first release; the very
+  #      first publish needs an account-scoped token because the
+  #      project doesn't exist yet).
   #   2. GitHub Release — `gh release upload` attaches every built
   #      wheel to the release that triggered the workflow.  The
   #      `GITHUB_TOKEN` is injected automatically.
@@ -680,12 +677,8 @@ jobs:
       - collect
     if: github.event_name == 'release' && github.event.action == 'published'
     runs-on: ubuntu-22.04
-    environment:
-      name: pypi
-      url: https://pypi.org/p/pyplantuml-bundled
     permissions:
       contents: write       # for gh release upload
-      id-token: write       # for PyPI OIDC
 
     steps:
       - uses: actions/checkout@v4
@@ -699,9 +692,10 @@ jobs:
       - name: List wheels to publish
         run: ls -lh dist/
 
-      - name: Publish to PyPI (OIDC trusted publisher)
+      - name: Publish to PyPI (token auth via PYPI_PASSWORD secret)
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          password: ${{ secrets.PYPI_PASSWORD }}
           packages-dir: dist
           # Skip wheels already on PyPI — re-running a release should
           # not fail just because a previous attempt got the wheels up.
