@@ -61,15 +61,18 @@ These floors are **load-bearing** — every CI matrix entry is chosen to be at o
 ├── tests/                   – pyplantuml Python API tests (used by wheel pytest)
 ├── tests_portable/          – subprocess-based tests of the portable binary
 ├── .github/workflows/
-│   ├── build.yml            – wheel build + 3-phase stage 2 + release-only PyPI/Release publish
+│   ├── build.yml            – wheel build + 3-phase stage 2 + release-only PyPI/Release publish (PYPI_PASSWORD secret)
 │   ├── portable.yml         – portable exe build + 3-phase stage 2 + release-only Release publish
-│   ├── unit-test.yml        – fast Linux py3.10/3.11/3.12 pytest, push/PR feedback loop
+│   ├── unit-test.yml        – 3 OS × 4 py pytest matrix, 100% coverage gate on Phase-1 modules, codecov upload
+│   ├── badge.yml            – on push to main: cloc → gist-hosted shields (loc, comment %)
 │   └── watch-upstream-release.yml – manual dispatch (schedule off): detects new plantuml/plantuml release, opens bump PR
 ├── pyproject.toml
 ├── setup.py                 – ONLY for `bdist_wheel` tag override
 ├── MANIFEST.in
 ├── LICENSE                  – GPLv3 (verbatim from PlantUML upstream)
 ├── NOTICE                   – bundled-binary attribution
+├── codecov.yml              – codecov project threshold (auto, ±3% delta)
+├── cloc.sh                  – `cloc` wrapper: `--loc` / `--comments` / `--percentage` for badge.yml
 ├── README.md
 ├── AGENTS.md
 └── CLAUDE.md  →  AGENTS.md  (symlink)

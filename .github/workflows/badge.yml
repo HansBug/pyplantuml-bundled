@@ -1,0 +1,74 @@
+name: Badge update
+
+# Updates two shields.io endpoint badges hosted on a Gist:
+#   * pyplantuml-bundled-loc.json       — lines of code (counted by cloc.sh)
+#   * pyplantuml-bundled-comments.json  — comment percentage
+#
+# Triggered on push to main only — badge values track the merged
+# state, not work-in-progress branches.  Adapted from the same flow
+# used in HansBug/pyfcstm.
+#
+# Required secrets:
+#   GIST_SECRET     — PAT with `gist` scope authorising writes
+#   BADGE_GIST_ID   — id of the gist that holds the JSON files
+#
+# Security: only `env.CODE_LINES` / `env.COMMENT_LINES` (numeric
+# output of cloc.sh) reaches `run:` blocks; no user-controlled
+# strings (issue/PR titles, commit messages, head_ref, etc.) are
+# interpolated, so there is no command-injection surface.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: badge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-badges:
+    name: Update gist-hosted shields
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install cloc
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cloc
+
+      - name: Count lines of code + comments
+        run: |
+          cloc . \
+            --exclude-dir=venv,.venv,jre,pyinstaller-build,pyinstaller-dist,build,dist,wheelhouse,node_modules \
+            --not-match-d='\.egg-info$'
+          echo "CODE_LINES=$(./cloc.sh --loc)" >> "$GITHUB_ENV"
+          echo "COMMENT_LINES=$(./cloc.sh --percentage)%" >> "$GITHUB_ENV"
+
+      - name: Publish lines-of-code badge
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: ${{ secrets.BADGE_GIST_ID }}
+          filename: pyplantuml-bundled-loc.json
+          label: Lines of Code
+          message: ${{ env.CODE_LINES }}
+          color: lightgrey
+
+      - name: Publish comment-percentage badge
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: ${{ secrets.BADGE_GIST_ID }}
+          filename: pyplantuml-bundled-comments.json
+          label: Comments
+          message: ${{ env.COMMENT_LINES }}
+          color: green

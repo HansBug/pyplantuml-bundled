@@ -87,4 +87,18 @@ jobs:
             --cov=pyplantuml.session \
             --cov=pyplantuml._diagnose \
             --cov-report=term-missing \
+            --cov-report=xml \
             --cov-fail-under=100
+
+      - name: Upload coverage to Codecov
+        # Don't fail the build on a Codecov-side glitch — the
+        # --cov-fail-under gate above is the authoritative coverage
+        # check; Codecov is the trend graph, not the door.
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests-${{ matrix.os }}-py${{ matrix.python-version }}
+          name: ${{ matrix.os }}-py${{ matrix.python-version }}
+          fail_ci_if_error: false
