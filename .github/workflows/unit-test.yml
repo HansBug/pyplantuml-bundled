@@ -102,3 +102,119 @@ jobs:
           flags: unittests-${{ matrix.os }}-py${{ matrix.python-version }}
           name: ${{ matrix.os }}-py${{ matrix.python-version }}
           fail_ci_if_error: false
+
+  # ------------------------------------------------------------------
+  # plantuml-compat: same pytest battery, but the bundled jar is
+  # swapped out for an arbitrary upstream PlantUML version.  Catches
+  # cross-version regressions in the wrapper code (`-pipe -pipedelimitor`
+  # framing, `-checkonly` stderr parsing, SVG CJK encoding shifts,
+  # PNG byte-size drift) before they reach a release.
+  #
+  # Versions are mid-year representatives spanning 2020-2026 plus a
+  # "latest" entry resolved at job start from
+  # `repos/plantuml/plantuml/releases/latest`.  `latest` floats and
+  # the pinned versions stay fixed for regression-detect.
+  #
+  # Linux + Python 3.10 only — the cross-OS / cross-Python axes are
+  # already exercised by the `pytest` job above; this matrix is
+  # specifically about the upstream-jar axis.
+  # ------------------------------------------------------------------
+  pytest-plantuml-compat:
+    name: pytest / plantuml ${{ matrix.plantuml-version }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        plantuml-version:
+          - '1.2020.7'
+          - '1.2021.7'
+          - '1.2022.7'
+          - '1.2023.7'
+          - '1.2024.0'
+          - '1.2024.7'
+          - '1.2025.5'
+          - '1.2026.2'
+          - 'latest'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install host fonts + freetype
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            fontconfig fonts-wqy-microhei fonts-dejavu-core libfreetype6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Resolve plantuml version
+        id: resolve
+        env:
+          REQUESTED: ${{ matrix.plantuml-version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "$REQUESTED" = "latest" ]; then
+            v=$(gh api repos/plantuml/plantuml/releases/latest --jq '.tag_name' | sed 's/^v//')
+          else
+            v="$REQUESTED"
+          fi
+          echo "Resolved version: $v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Download plantuml jar (no SHA pin — compat fixture)
+        env:
+          PLANTUML_V: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          # 1.2020 / 1.2021 only have SourceForge jars (no GH release
+          # asset attached even though the tag exists).  1.2022+ ship
+          # a downloadable plantuml-<v>.jar on GH Releases.
+          year=$(echo "$PLANTUML_V" | awk -F. '{print $2}')
+          if [ "$year" -lt 2022 ]; then
+            url="https://sourceforge.net/projects/plantuml/files/${PLANTUML_V}/plantuml.${PLANTUML_V}.jar/download"
+          else
+            url="https://github.com/plantuml/plantuml/releases/download/v${PLANTUML_V}/plantuml-${PLANTUML_V}.jar"
+          fi
+          echo "Fetching $url"
+          curl -fsSL --retry 3 -o src/pyplantuml/plantuml.jar "$url"
+          ls -lh src/pyplantuml/plantuml.jar
+          # Sanity: must be a real jar, not a 1KB error page.
+          test "$(stat -c %s src/pyplantuml/plantuml.jar)" -gt 1000000
+
+      - name: Build JRE (jlink)
+        run: bash scripts/build_jre.sh
+
+      - name: Install package + pytest + coverage
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest pytest-cov
+
+      - name: Run pytest with 100% coverage gate on Phase-1 modules
+        run: |
+          python -m pytest tests/ -v --tb=short --color=no \
+            --cov=pyplantuml._inmem \
+            --cov=pyplantuml.session \
+            --cov=pyplantuml._diagnose \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=100
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        env:
+          PLANTUML_V: ${{ steps.resolve.outputs.version }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: plantuml-${{ steps.resolve.outputs.version }}
+          name: plantuml-${{ steps.resolve.outputs.version }}
+          fail_ci_if_error: false
