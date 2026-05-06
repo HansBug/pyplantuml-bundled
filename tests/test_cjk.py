@@ -43,9 +43,12 @@ def test_cjk_png_has_substantial_width(cjk_puml: Path, tmp_path: Path):
 def test_cjk_svg_has_all_three_languages(cjk_puml: Path, tmp_path: Path):
     render(cjk_puml, output_dir=tmp_path, fmt="svg")
     text = (tmp_path / "cjk.svg").read_text(encoding="utf-8")
-    # 中 (Chinese) — must be present
-    assert "&#20013;" in text
+    # PlantUML's SVG output encodes CJK either as literal UTF-8 (older
+    # 1.2020-1.2022 line) or as numeric character entities (1.2024+).
+    # Accept both so the test stays robust across upstream versions.
+    # 中 (Chinese) — U+4E2D
+    assert ("中" in text) or ("&#20013;" in text)
     # こ (Japanese hiragana ko) — U+3053
-    assert "&#12371;" in text
+    assert ("こ" in text) or ("&#12371;" in text)
     # 한 (Korean hangul) — U+D55C
-    assert "&#54620;" in text
+    assert ("한" in text) or ("&#54620;" in text)

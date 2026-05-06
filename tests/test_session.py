@@ -152,7 +152,13 @@ def test_session_unicode_puml():
     with Session(fmt="png") as s:
         out = s.render(cjk)
     assert out.startswith(PNG_HEADER)
-    assert len(out) >= 3000  # CJK with real glyphs renders to >3KB
+    # PlantUML's PNG byte size for the same input has shifted across
+    # versions (1.2024.7 → ~1850B, 1.2026.2 → ~1700B as the renderer
+    # tightened compression / default skin params).  Floor of 1500B
+    # comfortably distinguishes "real glyphs rendered" from the tofu
+    # case where every character collapses to an identical empty box
+    # (highly compressible, ~700-900B).
+    assert len(out) >= 1500
 
 
 def test_session_manual_close_without_with_statement():
