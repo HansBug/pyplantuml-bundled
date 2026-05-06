@@ -166,6 +166,14 @@ def _run_pipe_ttxt(source):
     / :func:`render_bytes`.  Returns the stdout text (which is either
     the rendered ASCII-art diagram or — for invalid sources — the
     diagnostic block).
+
+    Raises :class:`PlantUmlError` when plantuml itself fails to start
+    (non-zero exit AND empty stdout — almost certainly a corrupt jar,
+    missing JRE, OOM at JVM init, or similar infra problem rather than
+    a syntax error in ``source``).  Surfacing this here prevents the
+    caller from synthesising a misleading "syntax error?" diagnostic
+    against the user's puml when the real cause is the wrapper's own
+    runtime.
     """
     if not isinstance(source, str):
         raise PlantUmlError(
@@ -182,6 +190,19 @@ def _run_pipe_ttxt(source):
         stderr=subprocess.PIPE,
         env=auto_env,
     )
+    if proc.returncode != 0 and not proc.stdout:
+        stderr = (
+            proc.stderr.decode("utf-8", errors="replace")
+            if proc.stderr
+            else ""
+        )
+        raise PlantUmlError(
+            "_run_pipe_ttxt: plantuml exited rc={} with no stdout; "
+            "stderr: {}".format(
+                proc.returncode,
+                stderr.strip()[:500] or "(empty)",
+            )
+        )
     return proc.stdout.decode("utf-8", errors="replace")
 
 

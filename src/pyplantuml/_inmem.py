@@ -52,9 +52,15 @@ def _run_pipe(source_bytes, fmt, extra_args=()):
 
 def _raise_syntax_error_from_source(source, returncode):
     """Re-render in -ttxt to get the human-readable diagnostic, then
-    raise :class:`PlantUmlSyntaxError`.  Imported lazily to avoid a
-    circular import at module-load time (``_diagnose`` imports from
-    this module's package)."""
+    raise :class:`PlantUmlSyntaxError`.
+
+    The ``_diagnose`` import is kept lazy so callers that only use
+    :func:`render_text` (the lenient default path) don't pay the cost
+    of loading ``_diagnose`` at module-import time.  There is no
+    actual circular dependency — ``_diagnose`` only pulls symbols from
+    the ``pyplantuml`` package that ``__init__.py`` defines well
+    before its bottom-of-file ``from ._inmem import ...`` line.
+    """
     from ._diagnose import _run_pipe_ttxt, _parse_ttxt_diagnostic
     diag_text = _run_pipe_ttxt(source)
     info = _parse_ttxt_diagnostic(diag_text)
@@ -94,7 +100,9 @@ def render_text(source, fmt="png", strict=False, extra_args=()):
         the problem).  If True, raise :class:`PlantUmlSyntaxError`
         with the structured diagnostic instead — see the
         :class:`PlantUmlSyntaxError` docstring for the available
-        fields.
+        fields.  Note: strict mode pays the JVM cold-start a second
+        time on the failure path to capture the ``-ttxt`` diagnostic;
+        success-path latency is unaffected.
     extra_args : Iterable[str]
         Additional CLI tokens forwarded verbatim after the format flag.
 

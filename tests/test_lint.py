@@ -270,6 +270,53 @@ def test_run_pipe_ttxt_rejects_non_string():
         _run_pipe_ttxt(b"@startuml\nA -> B\n@enduml")
 
 
+# --- JVM-level failure surfaces as PlantUmlError, not a fake "syntax error"
+
+def test_run_pipe_ttxt_raises_on_jvm_failure_with_no_stdout(monkeypatch):
+    """If plantuml itself fails to start (corrupt jar / missing JRE /
+    OOM at JVM init), `_run_pipe_ttxt` must raise :class:`PlantUmlError`
+    naming the upstream stderr — NOT silently return "" which would
+    be parsed downstream as a syntax error of the user's puml.
+
+    Reviewer concern from PR #5: the day someone hits a real infra
+    failure, "plantuml said your puml is broken" is a misleading
+    diagnostic; the real cause should bubble up.
+    """
+    from pyplantuml import _diagnose as diag_mod
+    import subprocess as sp
+
+    class _FakeProc(object):
+        def __init__(self):
+            self.returncode = 1
+            self.stdout = b""
+            self.stderr = b"Error: Could not find or load main class net.sourceforge.plantuml.Run\n"
+
+    monkeypatch.setattr(diag_mod.subprocess, "run", lambda *a, **k: _FakeProc())
+    with pytest.raises(PlantUmlError) as exc:
+        _run_pipe_ttxt("@startuml\nA -> B\n@enduml")
+    msg = str(exc.value)
+    assert "rc=1" in msg
+    assert "Could not find or load main class" in msg
+
+
+def test_run_pipe_ttxt_raises_on_jvm_failure_with_empty_stderr(monkeypatch):
+    """Even when stderr is empty (e.g. the JVM segfaulted before
+    writing anything), still raise rather than silently returning ''.
+    The placeholder "(empty)" makes it obvious in the error string
+    that no upstream message was available."""
+    from pyplantuml import _diagnose as diag_mod
+
+    class _FakeProc(object):
+        def __init__(self):
+            self.returncode = 137  # 128 + SIGKILL — OOM-killer style
+            self.stdout = b""
+            self.stderr = b""
+
+    monkeypatch.setattr(diag_mod.subprocess, "run", lambda *a, **k: _FakeProc())
+    with pytest.raises(PlantUmlError, match=r"rc=137.*\(empty\)"):
+        _run_pipe_ttxt("@startuml\nA -> B\n@enduml")
+
+
 # --- fallback path: -checkonly said error but -ttxt didn't surface a block
 
 def test_lint_fallback_when_ttxt_unparseable_with_text(monkeypatch):
