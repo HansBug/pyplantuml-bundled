@@ -6,10 +6,29 @@ import pytest
 
 import pyplantuml
 from pyplantuml import PlantUmlError, Session
+from pyplantuml.session import _read_until_delim_terminated
 
 from .conftest import SIMPLE_PUML
 
 PNG_HEADER = b"\x89PNG\r\n\x1a\n"
+DELIM = b"__TEST_DELIM__"
+
+
+def _chunked_reader(chunks):
+    """Build a read_fn that yields ``chunks`` in order, then b'' (EOF)."""
+    iterator = iter(chunks)
+
+    def read_fn(_size):
+        try:
+            return next(iterator)
+        except StopIteration:
+            return b""
+
+    return read_fn
+
+
+def _no_stderr():
+    return ""
 
 
 def test_session_basic_with_statement_png():
@@ -27,7 +46,20 @@ def test_session_renders_consecutive_diagrams_on_same_jvm():
         out3 = s.render("@startuml\nE -> F : third\n@enduml")
         pid_after_third = s._proc.pid
     assert pid_after_first == pid_after_third
-    assert all(o.startswith(PNG_HEADER) for o in (out1, out2, out3))
+    # Diagnostic-rich asserts so a CI failure surfaces which output is
+    # malformed and what it starts with.
+    assert out1.startswith(PNG_HEADER), (
+        "out1 missing PNG header: len=%d, head=%s, tail=%s"
+        % (len(out1), out1[:32].hex(), out1[-16:].hex())
+    )
+    assert out2.startswith(PNG_HEADER), (
+        "out2 missing PNG header: len=%d, head=%s, tail=%s"
+        % (len(out2), out2[:32].hex(), out2[-16:].hex())
+    )
+    assert out3.startswith(PNG_HEADER), (
+        "out3 missing PNG header: len=%d, head=%s, tail=%s"
+        % (len(out3), out3[:32].hex(), out3[-16:].hex())
+    )
     # Each render should produce different bytes (different content)
     assert out1 != out2
     assert out2 != out3
@@ -103,9 +135,15 @@ def test_session_continues_after_bad_puml():
         good1 = s.render(SIMPLE_PUML)
         bad = s.render("@startuml\nA --bogus-> B\n@enduml")
         good2 = s.render("@startuml\nX -> Y\n@enduml")
-    assert good1.startswith(PNG_HEADER)
-    assert bad.startswith(PNG_HEADER)
-    assert good2.startswith(PNG_HEADER)
+    assert good1.startswith(PNG_HEADER), (
+        "good1 head=%s len=%d" % (good1[:32].hex(), len(good1))
+    )
+    assert bad.startswith(PNG_HEADER), (
+        "bad head=%s len=%d" % (bad[:32].hex(), len(bad))
+    )
+    assert good2.startswith(PNG_HEADER), (
+        "good2 head=%s len=%d" % (good2[:32].hex(), len(good2))
+    )
 
 
 def test_session_unicode_puml():
@@ -147,6 +185,101 @@ def test_session_render_after_jvm_killed():
         assert "JVM" in str(exc.value)
     finally:
         s.close()
+
+
+# --- _read_until_delim_terminated framing branches ----------------------
+# These exercise the post-DELIM line-terminator handling without spawning
+# a JVM — the framing logic was extracted to a plain function precisely
+# so each branch (LF, CRLF, split flushes, EOF, defensive fallback) gets
+# direct coverage on every CI runner regardless of platform.
+
+
+def test_read_frame_basic_lf_in_one_chunk():
+    image = b"IMG-CONTENTS"
+    result = _read_until_delim_terminated(
+        _chunked_reader([image + DELIM + b"\n"]), DELIM, _no_stderr
+    )
+    assert result == image
+
+
+def test_read_frame_split_image_then_delim_lf():
+    image = b"IMG-PART-1-IMG-PART-2"
+    result = _read_until_delim_terminated(
+        _chunked_reader([image[:8], image[8:] + DELIM + b"\n"]),
+        DELIM, _no_stderr,
+    )
+    assert result == image
+
+
+def test_read_frame_delim_arrives_without_lf_then_lf_arrives():
+    image = b"IMG"
+    # Reader serves DELIM with no terminator yet, then LF in next read.
+    result = _read_until_delim_terminated(
+        _chunked_reader([image + DELIM, b"\n"]), DELIM, _no_stderr,
+    )
+    assert result == image
+
+
+def test_read_frame_crlf_in_one_chunk():
+    image = b"IMG-CRLF"
+    result = _read_until_delim_terminated(
+        _chunked_reader([image + DELIM + b"\r\n"]), DELIM, _no_stderr,
+    )
+    assert result == image
+
+
+def test_read_frame_split_cr_then_lf():
+    image = b"IMG-CR-LF"
+    # CR arrives in one read, LF in the next — exercises the CR-pending
+    # `continue` branch.
+    result = _read_until_delim_terminated(
+        _chunked_reader([image + DELIM + b"\r", b"\n"]), DELIM, _no_stderr,
+    )
+    assert result == image
+
+
+def test_read_frame_eof_before_delim_raises():
+    with pytest.raises(PlantUmlError, match="JVM closed stdout"):
+        _read_until_delim_terminated(
+            _chunked_reader([b"PARTIAL"]),  # then EOF
+            DELIM, _no_stderr,
+        )
+
+
+def test_read_frame_eof_immediately_raises():
+    with pytest.raises(PlantUmlError, match="JVM closed stdout"):
+        _read_until_delim_terminated(
+            _chunked_reader([]),  # immediate EOF
+            DELIM, _no_stderr,
+        )
+
+
+def test_read_frame_eof_includes_stderr_excerpt():
+    def stderr_fn():
+        return "Some real failure message"
+    with pytest.raises(PlantUmlError, match="Some real failure message"):
+        _read_until_delim_terminated(
+            _chunked_reader([]), DELIM, stderr_fn,
+        )
+
+
+def test_read_frame_eof_with_empty_stderr_uses_placeholder():
+    with pytest.raises(PlantUmlError, match=r"\(empty\)"):
+        _read_until_delim_terminated(
+            _chunked_reader([]), DELIM, _no_stderr,
+        )
+
+
+def test_read_frame_delim_followed_by_garbage_returns_image_defensively():
+    """Defensive fallback: if DELIM is followed by something that is
+    neither CR nor LF (shouldn't happen with -pipedelimitor but
+    can't be ruled out across plantuml versions), return the image
+    rather than hanging."""
+    image = b"IMG"
+    result = _read_until_delim_terminated(
+        _chunked_reader([image + DELIM + b"X"]), DELIM, _no_stderr,
+    )
+    assert result == image
 
 
 def test_session_render_after_stdin_closed():
