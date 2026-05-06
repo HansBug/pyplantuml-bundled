@@ -11,10 +11,16 @@ __all__ = [
     "JAVA_BIN",
     "PKG_DIR",
     "render",
+    "render_text",
+    "render_bytes",
     "check",
     "run",
     "PlantUmlError",
     "version",
+    "Session",
+    "Diagnostic",
+    "lint",
+    "lint_text",
     "__version__",
     "__plantuml_version__",
 ]
@@ -292,6 +298,15 @@ def check(source: os.PathLike) -> bool:
 def version() -> str:
     proc = run(["-version"], capture_output=True, check=False)
     return proc.stdout.strip() if proc.stdout else ""
+
+
+# --- Phase 1 public surface (re-exported from submodules) ---------------
+# Imported lazily-at-bottom so the helpers above (PlantUmlError,
+# _build_env_and_java_args, _java_bin, run, JAR_PATH) are already
+# bound when the submodules import them.
+from ._inmem import render_text, render_bytes  # noqa: E402
+from .session import Session  # noqa: E402
+from ._diagnose import Diagnostic, lint, lint_text  # noqa: E402
 
 
 def _cli() -> int:
