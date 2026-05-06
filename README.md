@@ -1,9 +1,31 @@
 # pyplantuml-bundled
 
-[![CI](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/build.yml/badge.svg)](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/build.yml)
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPLv3%2B-blue)](LICENSE)
-[![Python: 3.6–3.14](https://img.shields.io/badge/python-3.6--3.14-blue)]()
+<div align="center">
+
+[![PyPI](https://img.shields.io/pypi/v/pyplantuml-bundled)](https://pypi.org/project/pyplantuml-bundled/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pyplantuml-bundled)
+![PyPI - Implementation](https://img.shields.io/pypi/implementation/pyplantuml-bundled)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/pyplantuml-bundled)
 [![PlantUML: 1.2024.7](https://img.shields.io/badge/plantuml-1.2024.7-orange)](https://github.com/plantuml/plantuml)
+
+![Loc](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/HansBug/787de4618fa1930fe66b66be89d50fe3/raw/pyplantuml-bundled-loc.json)
+![Comments](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/HansBug/787de4618fa1930fe66b66be89d50fe3/raw/pyplantuml-bundled-comments.json)
+[![codecov](https://codecov.io/gh/HansBug/pyplantuml-bundled/graph/badge.svg)](https://codecov.io/gh/HansBug/pyplantuml-bundled)
+
+[![Build wheels](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/build.yml/badge.svg)](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/build.yml)
+[![Portable executables](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/portable.yml/badge.svg)](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/portable.yml)
+[![Unit tests](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/unit-test.yml/badge.svg)](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/unit-test.yml)
+[![Badge update](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/badge.yml/badge.svg)](https://github.com/HansBug/pyplantuml-bundled/actions/workflows/badge.yml)
+
+[![GitHub stars](https://img.shields.io/github/stars/HansBug/pyplantuml-bundled)](https://github.com/HansBug/pyplantuml-bundled/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/HansBug/pyplantuml-bundled)](https://github.com/HansBug/pyplantuml-bundled/network)
+![GitHub commit activity](https://img.shields.io/github/commit-activity/m/HansBug/pyplantuml-bundled)
+[![GitHub issues](https://img.shields.io/github/issues/HansBug/pyplantuml-bundled)](https://github.com/HansBug/pyplantuml-bundled/issues)
+[![GitHub pulls](https://img.shields.io/github/issues-pr/HansBug/pyplantuml-bundled)](https://github.com/HansBug/pyplantuml-bundled/pulls)
+[![Contributors](https://img.shields.io/github/contributors/HansBug/pyplantuml-bundled)](https://github.com/HansBug/pyplantuml-bundled/graphs/contributors)
+[![GitHub license](https://img.shields.io/github/license/HansBug/pyplantuml-bundled)](https://github.com/HansBug/pyplantuml-bundled/blob/main/LICENSE)
+
+</div>
 
 `pip install pyplantuml-bundled` and you have a working PlantUML — no system Java, no `apt install fontconfig`, no extra fonts. Even on a `python:3.10-slim` or `alpine` container that ships nothing but the Python interpreter, this package renders PlantUML diagrams (including CJK text) out of the box.
 
