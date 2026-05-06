@@ -32,6 +32,58 @@ _PIPE_DELIM = "__PYPLANTUML_PIPE_DELIM_b1f3a2c7__"
 _PIPE_DELIM_BYTES = _PIPE_DELIM.encode("ascii")
 
 
+def _read_until_delim_terminated(read_fn, delim_bytes, get_stderr_text):
+    """Drive ``read_fn`` until ``delim_bytes`` followed by a line terminator
+    is seen on stream; return everything before the delimiter.
+
+    Earlier versions of this loop returned as soon as the delimiter byte
+    sequence appeared on stdout — but on JDK 11 the underlying
+    ``PrintStream`` sometimes flushes ``DELIM`` and the trailing ``\\n``
+    in separate writes.  The lingering ``\\n`` then ended up at the head
+    of the next render's read, breaking the PNG signature check.
+    Waiting for ``DELIM`` + line terminator guarantees the OS pipe is
+    drained back to the post-frame state plantuml expects.  Both LF
+    and CRLF terminators are accepted (CRLF can appear when the pipe
+    runs through a Windows shim).
+
+    Extracted as a free function so the framing branches can be
+    exhaustively unit-tested by passing synthetic ``read_fn`` callables
+    without spawning a real JVM.
+
+    Raises :class:`PlantUmlError` if ``read_fn`` returns a falsy chunk
+    (EOF) before a complete frame has arrived.
+    """
+    out = bytearray()
+    while True:
+        chunk = read_fn(65536)
+        if not chunk:
+            raise PlantUmlError(
+                "JVM closed stdout mid-render; stderr: {}".format(
+                    get_stderr_text()[:500] or "(empty)"
+                )
+            )
+        out.extend(chunk)
+        idx = out.find(delim_bytes)
+        if idx < 0:
+            continue
+        after_delim = idx + len(delim_bytes)
+        # Need at least one more byte (the LF, optionally preceded by CR).
+        if after_delim >= len(out):
+            continue
+        cursor = after_delim
+        if out[cursor] == 0x0d:  # CR (Windows)
+            cursor += 1
+            if cursor >= len(out):
+                continue  # CR present but LF not yet — keep reading
+        if cursor < len(out) and out[cursor] == 0x0a:  # LF
+            # Full DELIM + line terminator drained.
+            return bytes(out[:idx])
+        # Defensive: DELIM followed by neither CR nor LF.  Should not
+        # happen with plantuml's -pipedelimitor implementation, but if
+        # it does, return what we have rather than hanging.
+        return bytes(out[:idx])
+
+
 class Session(object):
     """A warm-JVM PlantUML rendering session.
 
@@ -150,34 +202,21 @@ class Session(object):
                     exc, self._stderr_text()[:500] or "(empty)"
                 )
             )
-        # Read stdout in chunks until the delimiter is seen.  os.read on
-        # the underlying fd (rather than read1 on the BufferedReader) is
-        # the cleanest cross-platform way to read whatever's currently
-        # available without blocking past one flush.
-        out = bytearray()
         out_fd = self._proc.stdout.fileno()
-        while _PIPE_DELIM_BYTES not in out:
+
+        def _read_chunk(size):
             try:
-                chunk = os.read(out_fd, 65536)
+                return os.read(out_fd, size)
             except OSError as exc:  # pragma: no cover - rare race on close
                 raise PlantUmlError(
                     "Session.render: stdout read error: {}; stderr: {}".format(
                         exc, self._stderr_text()[:500] or "(empty)"
                     )
                 )
-            if not chunk:  # pragma: no cover - JVM dying mid-render is racy
-                raise PlantUmlError(
-                    "JVM closed stdout mid-render; stderr: {}".format(
-                        self._stderr_text()[:500] or "(empty)"
-                    )
-                )
-            out.extend(chunk)
-        # Image is everything before the delimiter.  Bytes after the
-        # delimiter are just plantuml's trailing "\n" — no residual to
-        # carry into the next render because plantuml only writes more
-        # to stdout after we send another puml on stdin.
-        idx = out.find(_PIPE_DELIM_BYTES)
-        return bytes(out[:idx])
+
+        return _read_until_delim_terminated(
+            _read_chunk, _PIPE_DELIM_BYTES, self._stderr_text
+        )
 
     def close(self):
         """Shut down the JVM.  Idempotent.
