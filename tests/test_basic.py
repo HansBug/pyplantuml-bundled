@@ -34,8 +34,14 @@ def test_render_svg_has_chinese_entity(cjk_puml: Path, tmp_path: Path):
     assert out.is_file()
     text = out.read_text(encoding="utf-8")
     assert "<svg " in text
-    # PlantUML emits CJK as numeric character entities; "中" is U+4E2D.
-    assert "&#20013;" in text, "SVG seems to be missing CJK characters"
+    # PlantUML's SVG encoding of CJK has shifted across versions:
+    # 1.2020-1.2022 emit literal UTF-8 ("中"), 1.2024+ emit numeric
+    # character entities ("&#20013;").  Both are valid renderings of
+    # U+4E2D — the test only fails when the character is absent in
+    # any form (which would mean the diagram silently dropped CJK).
+    assert ("中" in text) or ("&#20013;" in text), (
+        "SVG seems to be missing the Chinese character 中"
+    )
 
 
 def test_checkonly_valid(simple_puml: Path):
