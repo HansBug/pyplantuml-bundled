@@ -24,7 +24,7 @@ A PyPI distribution that lets people `pip install pyplantuml-bundled` and get a 
 | Surface | Floor | Why |
 |---|---|---|
 | Python (wheel runtime) | 3.6 | Lowest still-encountered Python on long-lived prod boxes (Ubuntu 18.04 ships 3.6.9). The wheel itself is `py3-none`, so a single artifact serves 3.6–3.14. |
-| Python (PyInstaller build-time) | 3.6 (Linux) / 3.10–3.11 (mac/win) | PyInstaller embeds the build-time interpreter into the binary. Lower build-time Python = wider runtime compat for the portable exe. |
+| Python (PyInstaller build-time) | 3.6 (Linux, both archs) / 3.7 (mac-x86_64 + win-x86_64) / 3.11 (win-arm64) | PyInstaller embeds the build-time interpreter into the binary. Lower build-time Python = wider runtime compat for the portable exe. mac/win-x86_64 use 3.7 because `actions/setup-python` no longer caches 3.6 on those slots; win-arm64 has no 3.7 build, 3.11 is the lowest available. |
 | Linux glibc (wheel) | 2.17 (`manylinux_2_17`) | CentOS 7 / RHEL 7 / Debian 8 / Ubuntu 14.04+ era, 2014-and-newer. Lower than `_2_28` to keep the supported window wide. |
 | Linux musl (wheel) | 1.1 (`musllinux_1_1`) | Alpine 3.12+ (2020). Lower than `_1_2` to include long-lived 3.12-based prod images. |
 | Linux glibc (portable) | 2.28 (Debian 10 buster) | The PyInstaller build container's glibc is the binary's lower bound. Ubuntu 18.04 (glibc 2.27) is **below** this and intentionally not in the portable matrix — install via wheel there. |
@@ -50,18 +50,21 @@ These floors are **load-bearing** — every CI matrix entry is chosen to be at o
 │           └── fonts/       – staged by scripts/ from vendored/ at CI time, gitignored
 ├── vendored/fonts/          – committed (DejaVu + WenQuanYi MicroHei TTC)
 ├── scripts/
-│   ├── fetch_plantuml_jar.sh
-│   ├── build_jre.sh
-│   ├── stage_linux_runtime.sh        – .so chain + fonts staging into wheel
+│   ├── fetch_plantuml_jar.sh         – sha256-verified jar download (PLANTUML_VERSION + PLANTUML_SHA256 env-overridable)
+│   ├── build_jre.sh                  – jlink minimal JRE from $JAVA_HOME (OpenJDK 11)
+│   ├── stage_linux_runtime.sh        – .so chain + fonts staging into wheel (manylinux/musllinux only)
 │   ├── stage2_install_python.sh      – CI helper: install python3+pip in any distro container
 │   ├── stage2_install_wheel.sh       – CI helper: stage2_install_python.sh + pip install wheel
 │   ├── portable_smoketest.sh         – CI helper: 5-check black-box smoketest of any plantuml binary
+│   ├── bump_plantuml_version.sh      – switch repo to a target plantuml version (rewrites pyproject/__init__/CHANGELOG/README/fetch script + new sha256)
 │   └── pyinstaller/                  – portable exe spec + entry script
 ├── tests/                   – pyplantuml Python API tests (used by wheel pytest)
 ├── tests_portable/          – subprocess-based tests of the portable binary
 ├── .github/workflows/
-│   ├── build.yml            – wheel build + 3-phase stage 2
-│   └── portable.yml         – portable exe build + 3-phase stage 2
+│   ├── build.yml            – wheel build + 3-phase stage 2 + release-only PyPI/Release publish
+│   ├── portable.yml         – portable exe build + 3-phase stage 2 + release-only Release publish
+│   ├── unit-test.yml        – fast Linux py3.10/3.11/3.12 pytest, push/PR feedback loop
+│   └── watch-upstream-release.yml – manual dispatch (schedule off): detects new plantuml/plantuml release, opens bump PR
 ├── pyproject.toml
 ├── setup.py                 – ONLY for `bdist_wheel` tag override
 ├── MANIFEST.in
@@ -93,7 +96,7 @@ Stage-2 distros tested (oldest → newest within each family):
 | Debian | 10-slim, 12-slim (× 2 archs) | 10-slim, 12-slim (× 2 archs) |
 | Ubuntu | 18.04, 20.04, 22.04, 24.04 (aarch64 from 20.04) | 20.04, 22.04, 24.04 (× 2 archs each) — _no 18.04, glibc floor_ |
 | Red Hat | rockylinux:8, rockylinux:9, fedora:40 (x86_64) | rockylinux:8, rockylinux:9, fedora:40 (× 2 archs) |
-| Alpine | 3.10, 3.12, 3.20, 3.21 (aarch64 from 3.20) | 3.10 (x86_64), 3.12, 3.20, 3.21 |
+| Alpine | 3.10, 3.12, 3.20, 3.21 (aarch64 from 3.20) | 3.10, 3.12, 3.20, 3.21 (aarch64 from 3.20) |
 | macOS | x86_64 + arm64 | x86_64 only |
 | Windows | x86_64 + arm64 | x86_64 + arm64 |
 

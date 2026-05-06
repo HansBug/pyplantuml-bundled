@@ -16,21 +16,32 @@ license; this NOTICE summarises them.
      * Checker Framework type-annotations — MIT
    Their full notices live in plantuml.jar:META-INF/.
 
-2. Eclipse Temurin OpenJDK 17 (linked-out custom JRE built with jlink)
-   Copyright (C) Oracle and Eclipse Adoptium contributors
+2. Eclipse Temurin OpenJDK 11 (linked-out custom JRE built with jlink;
+   Microsoft OpenJDK 11 substituted on Windows ARM64 — Eclipse Temurin
+   11 has no win-aarch64 build, the Microsoft Build of OpenJDK does)
+   Copyright (C) Oracle, Eclipse Adoptium, and Microsoft contributors
    License: GPL-2.0 with Classpath Exception
-   Source: https://github.com/adoptium/temurin17-binaries
+   Source: https://github.com/adoptium/temurin11-binaries
+           https://github.com/microsoft/openjdk-builds
    The Classpath Exception explicitly permits redistribution and linking
    into otherwise-licensed applications.
 
 3. fontconfig + freetype + supporting libraries (Linux only)
-   * libfontconfig.so.1   — MIT-style ("fontconfig" license)
-   * libfreetype.so.6     — FreeType License (FTL) or GPL-2.0
-   * libpng16.so.16       — libpng License
-   * libexpat.so.1        — MIT
-   * libuuid.so.1         — BSD-3-Clause
-   * libz.so.1            — zlib License
-   * libbrotlidec.so.1, libbrotlicommon.so.1 — MIT
+   * libfontconfig.so.1                          — MIT-style ("fontconfig" license)
+   * libfreetype.so.6                            — FreeType License (FTL) or GPL-2.0
+   * libpng16.so.16 (or libpng15.so.15 on        — libpng License
+     manylinux2014 / CentOS 7 builds)
+   * libexpat.so.1                               — MIT
+   * libuuid.so.1                                — BSD-3-Clause
+   * libz.so.1                                   — zlib License
+   * libbrotlidec.so.1, libbrotlicommon.so.1     — MIT
+   * libharfbuzz.so.0                            — Old MIT (HarfBuzz License)
+   * libgraphite2.so.3                           — LGPL-2.1+ or MPL-1.1
+   * libglib-2.0.so.0 (glibc builds only;        — LGPL-2.1+
+     musl/alpine harfbuzz has no glib backend)
+   * libpcre.so.1 (or libpcre.so.3 on debian/    — BSD-3-Clause-like
+     ubuntu where the same PCRE 8 ships under
+     a different SONAME)
 
 4. DejaVu Sans / DejaVu Sans Bold (Linux fallback for Latin/Greek/Cyrillic)
    Copyright (c) Bitstream, Inc., contributed by the DejaVu authors

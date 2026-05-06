@@ -20,7 +20,7 @@ PlantUML is ubiquitous in CI doc-builds, lint hooks, notebook sidecars, and code
 | Component | Source | Per-platform size | License |
 |---|---|---|---|
 | `plantuml.jar` | upstream PlantUML 1.2024.7 | 22 MB (shared) | GPL-3.0-or-later |
-| `jre/` | Eclipse Temurin 17 (Microsoft OpenJDK 17 on Win-ARM64), `jlink`-stripped to the modules PlantUML actually uses | 47–58 MB | GPLv2 + Classpath Exception |
+| `jre/` | Eclipse Temurin 11 (Microsoft OpenJDK 11 on Win-ARM64 — Eclipse Temurin 11 has no win-aarch64 build), `jlink`-stripped to the modules PlantUML actually uses | 47–58 MB | GPLv2 + Classpath Exception |
 | `runtime/linux-<arch>/lib` | `libfontconfig.so.1` + `libfreetype.so.6` + chain | 1.8 MB (Linux only) | MIT / FTL / various permissive |
 | `runtime/linux-<arch>/fonts` | DejaVu Sans + WenQuanYi Micro Hei | 6.4 MB (Linux only) | Bitstream Vera / Apache-2.0 |
 | `runtime/fonts.conf.template` | rendered with absolute paths at first run | <1 KB | n/a |
@@ -215,9 +215,9 @@ chmod +x plantuml-onefile-linux-x86_64-glibc
 | Linux aarch64 glibc | `plantuml-onefile-linux-aarch64-glibc` | `plantuml-onedir-linux-aarch64-glibc.zip` | Debian 10 buster (glibc 2.28)       |
 | Linux x86_64 musl   | `plantuml-onefile-linux-x86_64-musl`   | `plantuml-onedir-linux-x86_64-musl.zip`   | Alpine 3.12 (musl 1.1.24, 2020)     |
 | Linux aarch64 musl  | `plantuml-onefile-linux-aarch64-musl`  | `plantuml-onedir-linux-aarch64-musl.zip`  | Alpine 3.12                          |
-| macOS x86_64        | `plantuml-onefile-macos-x86_64`        | `plantuml-onedir-macos-x86_64.zip`        | macos-15-intel runner (Python 3.10) |
+| macOS x86_64        | `plantuml-onefile-macos-x86_64`        | `plantuml-onedir-macos-x86_64.zip`        | macos-15-intel runner (Python 3.7)  |
 | macOS arm64         | _not shipped — see hardened-runtime caveat above_ | — | — |
-| Windows x86_64      | `plantuml-onefile-windows-x86_64.exe`  | `plantuml-onedir-windows-x86_64.zip`      | windows-2022 runner (Python 3.10)   |
+| Windows x86_64      | `plantuml-onefile-windows-x86_64.exe`  | `plantuml-onedir-windows-x86_64.zip`      | windows-2022 runner (Python 3.7)    |
 | Windows arm64       | `plantuml-onefile-windows-arm64.exe`   | `plantuml-onedir-windows-arm64.zip`       | windows-11-arm runner (Python 3.11) |
 
 ### Portable test matrix (clean-environment stage 2)
@@ -258,8 +258,11 @@ Exit code is the count of failed cases (0 when clean).
 git clone https://github.com/HansBug/pyplantuml-bundled
 cd pyplantuml-bundled
 
-# Requires JDK 17 with the jmods directory (e.g. Eclipse Temurin 17).
-export JAVA_HOME=/path/to/jdk17
+# Requires JDK 11 with the jmods directory (e.g. Eclipse Temurin 11).
+# Any JDK 11+ with `jmods/` actually works for jlink, but the CI ships
+# wheels built from JDK 11 — match it locally if you want bit-identical
+# output to a release artifact.
+export JAVA_HOME=/path/to/jdk11
 
 make assets               # fetch jar, jlink JRE, stage Linux native libs
 python -m build --wheel   # emits dist/pyplantuml_bundled-*.whl

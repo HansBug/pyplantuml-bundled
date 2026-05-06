@@ -8,8 +8,10 @@ Thanks for considering a contribution. The single source of truth for "how this 
 git clone https://github.com/HansBug/pyplantuml-bundled
 cd pyplantuml-bundled
 
-# JDK 17 with jmods/ is required (Eclipse Temurin 17 works).
-export JAVA_HOME=/path/to/jdk17
+# JDK 11 with jmods/ is required (Eclipse Temurin 11 works); any 11+ JDK
+# with the jmods directory will run jlink, but CI uses 11 — match it
+# locally for output that matches a release artifact bit-for-bit.
+export JAVA_HOME=/path/to/jdk11
 
 make assets               # fetch jar, jlink JRE, stage Linux native libs
 python -m build --wheel   # produces dist/pyplantuml_bundled-*.whl
@@ -22,7 +24,7 @@ If you only need to iterate on Python source you can `pip install -e .` after `m
 ## What to keep in mind
 
 - **Do not commit binaries.** `plantuml.jar`, `jre/`, and `runtime/linux-*/` are produced by `scripts/` and are gitignored. The exception is `vendored/fonts/` (~6 MB total) which is committed because the fonts are tiny, stable, and architecture-independent.
-- **Do not break the wheel tag.** The wheel must stay `py3-none-{platform}` so one wheel works on Python 3.7 – 3.14. The override lives in `setup.py`. Do not introduce a `cp310-cp310-…` style ABI tag unless you have a very good reason.
+- **Do not break the wheel tag.** The wheel must stay `py3-none-{platform}` so one wheel works on Python 3.6 – 3.14. The override lives in `setup.py`. Do not introduce a `cp310-cp310-…` style ABI tag unless you have a very good reason.
 - **Do not stage Linux runtime libraries from anywhere other than the manylinux / musllinux container that produces the wheel.** Mixing glibc baselines is the most common way to ship a wheel that crashes at import time on older distros.
 - **CJK rendering must stay visually correct.** Tofu glyphs do not raise errors, so byte-size + minimum width assertions in `tests/test_cjk.py` are how we catch regressions. If you change the font setup, run `pytest tests/test_cjk.py -v` and inspect a rendered PNG manually.
 
