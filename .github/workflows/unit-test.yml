@@ -1,20 +1,28 @@
 name: Unit tests
 
-# Lightweight feedback loop: just runs `pytest tests/` on a few Python
-# versions on Linux.  This is the "developer fast path" — it does NOT
-# replace `build.yml` (which does the cross-platform wheel build + the
-# 22-distro stage-2 matrix) or `portable.yml` (PyInstaller binaries).
+# Source-tree pytest matrix across {ubuntu, windows, macOS} × four
+# Python versions.  This is the "developer fast path" feedback loop —
+# it does NOT replace `build.yml` (cross-platform wheel build + 22-distro
+# stage-2 matrix) or `portable.yml` (PyInstaller binaries).
 #
 # Why no `stage_linux_runtime.sh` here?  That script's job is to copy
 # the libfontconfig/freetype/CJK chain *out of* a manylinux/musllinux
 # container *into* the wheel; running it on an ubuntu-22.04 host runner
-# would pull the wrong SONAMEs.  Instead we install the equivalent
-# packages from apt and let `pyplantuml/__init__.py` fall back to
-# system fontconfig (the `if runtime_dir.exists()` branch).
+# would pull the wrong SONAMEs.  Instead Linux apt-installs the
+# equivalent packages and `pyplantuml/__init__.py` falls back to system
+# fontconfig (the `if runtime_dir.exists()` branch).  macOS and Windows
+# rely on CoreText / GDI's built-in CJK families (PingFang / Yu Gothic /
+# Microsoft YaHei) — the bundled JRE's FontManager finds them via the
+# OS font discovery path.
 #
-# Security note: this workflow does not consume any user-provided
-# strings (issue/PR titles, commit messages, head_ref, etc.) in `run:`
-# blocks, so there is no command-injection surface.
+# Coverage gate: 100% line coverage on the Phase-1 modules
+# (_inmem / session / _diagnose) — see issue #1.  Defensive paths that
+# are racy to trigger live (mid-render JVM death, stdin BrokenPipeError
+# after pre-checks) carry `# pragma: no cover` annotations.
+#
+# Security: this workflow does not consume user-provided strings
+# (issue/PR titles, commit messages, head_ref, etc.) in `run:` blocks,
+# so there is no command-injection surface.
 
 on:
   push:
@@ -29,20 +37,22 @@ concurrency:
 
 jobs:
   pytest:
-    name: pytest / py${{ matrix.python-version }}
-    runs-on: ubuntu-22.04
+    name: pytest / ${{ matrix.os }} / py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        os: [ubuntu-22.04, windows-2022, macos-14]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
       - uses: actions/checkout@v4
 
-      # CJK fonts so test_cjk.py's PNG-size assertions pass.
-      # WenQuanYi MicroHei = same font family that the wheel bundles
-      # under vendored/fonts/, so behavior matches the shipped artifact.
-      - name: Install host fonts + freetype
+      # CJK fonts so test_cjk.py's byte-size assertions pass.
+      # WenQuanYi MicroHei is the same family the wheel bundles under
+      # vendored/fonts/, so behaviour here matches the shipped artefact.
+      - name: Install host fonts + freetype (Linux only)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
@@ -58,14 +68,23 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Stage assets (jar + jre)
+        shell: bash
         run: |
           bash scripts/fetch_plantuml_jar.sh
           bash scripts/build_jre.sh
 
-      - name: Install package + pytest
+      - name: Install package + pytest + coverage
+        shell: bash
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e . pytest
+          python -m pip install -e . pytest pytest-cov
 
-      - name: Run pytest
-        run: python -m pytest tests/ -v --tb=short --color=no
+      - name: Run pytest with 100% coverage gate on Phase-1 modules
+        shell: bash
+        run: |
+          python -m pytest tests/ -v --tb=short --color=no \
+            --cov=pyplantuml._inmem \
+            --cov=pyplantuml.session \
+            --cov=pyplantuml._diagnose \
+            --cov-report=term-missing \
+            --cov-fail-under=100
